@@ -44,14 +44,11 @@ import numpy as np
 import pandas as pd
 import csv
 import json
-from scipy import interpolate
-from scipy.misc import derivative
-from errors.UnexpectedEOFException import UnexpectedEOFException
 from multiprocessing import Pool, cpu_count
 import subprocess
 from time import sleep
 
-arguments = docopt(__doc__, version='NE-classifier 0.1')
+arguments = docopt(__doc__, version='NE-classifier 1.0')
 
 ### Constant for getting our base input dir
 QA_PATH  = (ROOT_PATH / ("validate/qa.py")).resolve()

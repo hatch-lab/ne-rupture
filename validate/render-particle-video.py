@@ -38,7 +38,7 @@ import re
 from PIL import Image
 
 ### Arguments and inputs
-arguments = docopt(__doc__, version='NE-classifier 0.1')
+arguments = docopt(__doc__, version='NE-classifier 1.0')
 
 images_path = Path(arguments['IMAGES_DIR']).resolve()
 csv_path = Path(arguments['INPUT_CSV']).resolve()

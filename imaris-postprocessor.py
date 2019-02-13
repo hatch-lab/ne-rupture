@@ -35,7 +35,7 @@ from statsmodels.tsa.stattools import kpss
 """
 Arguments and inputs
 """
-arguments = docopt(__doc__, version='NE-classifier 0.1')
+arguments = docopt(__doc__, version='NE-classifier 1.0')
 
 input_dir = arguments['INPUT_DIR']
 output_dir = arguments['OUTPUT_DIR']

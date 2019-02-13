@@ -40,6 +40,12 @@ if(!("true_event" %in% names(data))) {
   have_true_events <- F
 }
 
+package_list <- c("ggplot2", "cowplot", "jsonlite", "rlist")
+new_packages <- package_list[!(package_list %in% installed.packages()[,"Package"])]
+if(length(new_packages)) {
+  install.packages(new_packages)
+}
+
 library(ggplot2)
 library(cowplot)
 library(jsonlite)

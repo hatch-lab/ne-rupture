@@ -41,7 +41,7 @@ CONVERGENCE_LIMIT = 0.5 # How close scores have to be before we stop
 MAX_PROCESSES     = 4
 
 ### Arguments and inputs
-arguments = docopt(__doc__, version='NE-classifier 0.1')
+arguments = docopt(__doc__, version='NE-classifier 1.0')
 
 num_samples = int(arguments['--samples']) if arguments['--samples'] else 1000
 init_num_samples = int(arguments['--init-samples']) if arguments['--init-samples'] else 2000

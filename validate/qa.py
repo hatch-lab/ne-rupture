@@ -63,7 +63,7 @@ MAKE_VIDEO_PATH        = (ROOT_PATH / ("validate/render-full-video.py")).resolve
 MAX_PROCESSES          = 4
 
 ### Arguments and inputs
-arguments = docopt(__doc__, version='NE-classifier 0.1')
+arguments = docopt(__doc__, version='NE-classifier 1.0')
 
 classifier = re.sub(r'[^a-zA-Z0-9\-\_\.\+]', '', arguments['CLASSIFIER'])
 if classifier != arguments['CLASSIFIER']:

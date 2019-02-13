@@ -73,7 +73,7 @@ def _print(silence, string):
 QA_PATH  = (ROOT_PATH / ("validate/qa.py")).resolve()
 
 ### Arguments and inputs
-arguments = docopt(__doc__, version='NE-classifier 0.1')
+arguments = docopt(__doc__, version='NE-classifier 1.0')
 
 simple_output = True if arguments['--simple-output'] else False
 
