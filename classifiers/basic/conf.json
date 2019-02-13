@@ -1,0 +1,26 @@
+{
+  "R-area_derivative": 0.001428821,
+  "R-median_derivative": -0.0005983606,
+  "R-sum_derivative_lower": -0.001,
+  "R-sum_derivative_upper": 0.001,
+
+  "R-median_cutoff_frequency": 0.03,
+  "R-area_cutoff_frequency": 0.03,
+  "R-median_cutoff_scale_factor": 1.75,
+  "R-area_cutoff_scale_factor": 1,
+
+  "R-stationary_area": 0.747,
+  "R-stationary_median": -0.44,
+
+  "R-post_rupture_area_derivative": 0.00135737995,
+  "R-post_rupture_median_derivative": -0.00056844257,
+  "R-post_rupture_stationary_area": 0.71,
+  "R-post_rupture_stationary_median": -0.418,
+
+  "R-baseline_median_scale_factor": 0.92,
+  "R-recovery_event_label": "E",
+
+  "sliding_window_width": 767,
+  "sliding_window_step": 235,
+  "convergence_limit": 0.00003
+}

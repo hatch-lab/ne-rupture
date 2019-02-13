@@ -1,0 +1,137 @@
+{
+  "R-area_derivative":
+  {
+    "type": "gaussian", 
+    "mean": 0.00143, 
+    "sd": 0.01, 
+    "dtype": "float"
+  },
+  "R-median_derivative": 
+  {
+    "type": "gaussian", 
+    "mean": -0.0006,
+    "sd": 0.01, 
+    "dtype": "float"
+  }, 
+  "R-sum_derivative_lower":
+  {
+    "type": "gaussian", 
+    "mean": -0.0003, 
+    "sd": 0.01, 
+    "dtype": "float"
+  },
+  "R-sum_derivative_upper":
+  {
+    "type": "gaussian", 
+    "mean": 0.0007, 
+    "sd": 0.01, 
+    "dtype": "float"
+  },
+  "R-stationary_area": 
+  {
+    "type": "gaussian", 
+    "mean": 0.7,
+    "sd": 0.1, 
+    "dtype": "float"
+  }, 
+  "R-stationary_median": 
+  {
+    "type": "gaussian", 
+    "mean": -0.7,
+    "sd": 0.1, 
+    "dtype": "float"
+  }, 
+  "R-post_rupture_area_derivative":
+  {
+    "type": "gaussian", 
+    "mean": 0.00143, 
+    "sd": 0.01, 
+    "dtype": "float"
+  },
+  "R-post_rupture_median_derivative": 
+  {
+    "type": "gaussian", 
+    "mean": -0.0006,
+    "sd": 0.01, 
+    "dtype": "float"
+  }, 
+  "R-post_rupture_stationary_area": 
+  {
+    "type": "gaussian", 
+    "mean": 0.7,
+    "sd": 0.1, 
+    "dtype": "float"
+  }, 
+  "R-post_rupture_stationary_median": 
+  {
+    "type": "gaussian", 
+    "mean": -0.7,
+    "sd": 0.1, 
+    "dtype": "float"
+  }, 
+  "R-baseline_median_scale_factor": 
+  {
+    "type": "beta", 
+    "a": 95, 
+    "b": 5,
+    "dtype": "float"
+  },
+
+  "M-oblate_ellipticity":
+  {
+    "type": "gaussian",
+    "mean": 0.79,
+    "sd": 0.1,
+    "dtype": "float"
+  },
+  "M-area_derivative":
+  {
+    "type": "gaussian", 
+    "mean": 0.0005, 
+    "sd": 0.01, 
+    "dtype": "float"
+  },
+  "M-median_derivative": 
+  {
+    "type": "gaussian", 
+    "mean": -0.0002,
+    "sd": 0.01, 
+    "dtype": "float"
+  }, 
+  "M-sum_derivative_lower":
+  {
+    "type": "gaussian", 
+    "mean": -0.0002, 
+    "sd": 0.01, 
+    "dtype": "float"
+  },
+  "M-sum_derivative_upper":
+  {
+    "type": "gaussian", 
+    "mean": 0.00005, 
+    "sd": 0.01, 
+    "dtype": "float"
+  },
+  "M-baseline_median_scale_factor": 
+  {
+    "type": "beta", 
+    "a": 95, 
+    "b": 5,
+    "dtype": "float"
+  },
+
+  "sliding_window_width": 
+  {
+    "type": "uniform", 
+    "min": 400, 
+    "max": 1000, 
+    "dtype": "int"
+  }, 
+  "sliding_window_step": 
+  {
+    "type": "uniform", 
+    "min": 100, 
+    "max": 800, 
+    "dtype": "int"
+  }
+}

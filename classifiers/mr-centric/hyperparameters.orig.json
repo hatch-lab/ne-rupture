@@ -1,0 +1,43 @@
+{
+  "median_derivative": 
+  {
+    "type": "gaussian", 
+    "mean": -0.0006420759, 
+    "sd": 0.001, 
+    "dtype": "float"
+  }, 
+  "area_derivative": 
+  {
+    "type": "gaussian", 
+    "mean": 0.001193792,
+    "sd": 0.001, 
+    "dtype": "float"
+  }, 
+  "baseline_median_scale_factor": 
+  {
+    "type": "poisson", 
+    "mean": 0.95, 
+    "dtype": "float"
+  }, 
+  "sliding_window_width": 
+  {
+    "type": "uniform", 
+    "min": 400, 
+    "max": 1000, 
+    "dtype": "int"
+  }, 
+  "sliding_window_step": 
+  {
+    "type": "uniform", 
+    "min": 100, 
+    "max": 800, 
+    "dtype": "int"
+  }, 
+  "max_rupture_delay": 
+  {
+    "type": "uniform", 
+    "min": 100, 
+    "max": 1000, 
+    "dtype": "int"
+  }
+}
