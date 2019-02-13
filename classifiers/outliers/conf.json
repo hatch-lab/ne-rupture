@@ -1,0 +1,10 @@
+{
+  "median_cutoff": 2.2,
+  "area_cutoff": 2.2,
+  
+  "baseline_median_scale_factor": 0.92,
+
+  "sliding_window_width": 767,
+  "sliding_window_step": 235,
+  "convergence_limit": 0.00003
+}
