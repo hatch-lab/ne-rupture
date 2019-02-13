@@ -1,8 +1,0 @@
-{
-  "median_derivative": -0.0006420759,
-  "area_derivative": 0.001193792,
-  "baseline_median_scale_factor": 0.95,
-  "sliding_window_width": 720,
-  "sliding_window_step": 540,
-  "max_rupture_delay": 600
-}
