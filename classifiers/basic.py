@@ -563,6 +563,7 @@ if __name__ == '__main__':
   # data = pd.concat(results)
   data = apply_parallel(data.groupby([ 'data_set', 'particle_id' ]), classify_particle_events)
 
+output_path.mkdir(exist_ok=True)
 output_file_path = (output_path / (file_name)).resolve()
 data.to_csv(str(output_file_path), header=True, encoding='utf-8', index=None)
 

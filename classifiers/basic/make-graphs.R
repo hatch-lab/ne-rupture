@@ -335,7 +335,7 @@ if(length(interesting_plots) > 0) {
 }
 
 # Print out
-pdf(output, width=10, height=8.25, onefile=T)
+cairo_pdf(output, width=10, height=8.25, onefile=T)
 for(i in 1:length(plots)) {
   print(plots[[i]])
 }
