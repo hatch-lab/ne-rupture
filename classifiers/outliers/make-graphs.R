@@ -40,16 +40,13 @@ if(!("true_event" %in% names(data))) {
   have_true_events <- F
 }
 
-package_list <- c("ggplot2", "cowplot", "jsonlite", "rlist")
+package_list <- c("ggplot2", "cowplot", "jsonlite", "rlist", "plyr")
 new_packages <- package_list[!(package_list %in% installed.packages()[,"Package"])]
 if(length(new_packages)) {
   install.packages(new_packages)
 }
 
-library(ggplot2)
-library(cowplot)
-library(jsonlite)
-library(rlist)
+lapply(package_list, require, character.only = TRUE)
 
 raw_conf <- readLines(conf_path, warn=F)
 classifier_conf <- fromJSON(raw_conf)
@@ -97,6 +94,11 @@ get_event_groups <- function(df, column) {
 
     groups[nrow(groups)+1,] <- c(event_type, start, end, frame_start, frame_end, colors[[event_type]])
   }
+  
+  groups$start <- as.numeric(groups$start)
+  groups$end <- as.numeric(groups$end)
+  groups$frame_start <- as.integer(groups$frame_start)
+  groups$frame_end <- as.integer(groups$frame_end)
   
   return(groups)
 }
@@ -190,38 +192,43 @@ for(m in 1:length(data_sets)) {
     }
     
     # Generate plots
-    baseline_median <- mean(df$stationary_median[which(df$event == "N")], na.rm=T)
-    
-    df$frame[which(df$stationary_median < quantile(df$stationary_median, 0.25, na.rm=T)-iqr_scale*IQR(df$stationary_median, na.rm=T))],
-
     median_cutoff <- classifier_conf[['median_cutoff']]
-    area_cutoff <- classifier_conf[['area_cutoff']]
-
-    median_annotation <- quantile(df$stationary_median, 0.25, na.rm=T)-median_cutoff*IQR(df$stationary_median, na.rm=T)
-    area_annotation <- quantile(df$stationary_area, 0.25, na.rm=T)-area_cutoff*IQR(df$stationary_area, na.rm=T)
+    baseline_median <- mean(df$stationary_median[which(df$event == "N")], na.rm=T)
+    median_annotation <- quantile(df$stationary_median, 0.25, na.rm=T)[["25%"]]-median_cutoff*IQR(df$stationary_median, na.rm=T)
+    median_limit <- max(c(
+      abs(min(c(df$stationary_median*1.5, median_annotation*1.5), na.rm=T)), 
+      abs(max(c(df$stationary_median*1.5, median_annotation*1.5), na.rm=T))
+    ), na.rm=T)
     
     median_plot <- base_plot +
       geom_line(aes(x=time, y=stationary_median)) +
-      geom_line(aes(x=time, y=normalized_median), alpha=0.3) +
       ggtitle(paste0(data_set, ":", pid)) +
-      scale_y_continuous(name="Median", limits=c(-1,1)) +
-      scale_x_continuous(name="", labels=format_time_labels(), sec.axis = sec_axis(~./frame_rate, name="", labels=format_frame_labels())) +
-      annotate(geom="segment", x=-Inf, xend=Inf, y=median_annotation, yend=median_annotation, color="black", alpha=0.7) +
+      scale_y_continuous(name="Median", limits=c(-median_limit, median_limit)) +
+      scale_x_continuous(name="", labels=format_time_labels(), sec.axis = sec_axis(~./frame_rate, name="Frame", labels=format_frame_labels())) +
+      annotate(geom="segment", x=-Inf, xend=Inf, y=median_annotation, yend=median_annotation, color="red", alpha=0.7) +
       annotate(geom="segment", x=-Inf, xend=Inf, y=baseline_median, yend=baseline_median, linetype="dashed", alpha=0.7)
     if(have_true_events) {
       median_plot <- median_plot +
         annotate(geom="text", x=0.1, y=0.5, label="Predicted", alpha=0.8, hjust=0) +
         annotate(geom="text", x=0.1, y=-0.2, label="True", alpha=0.8, hjust=0)
     }
+
+    area_cutoff <- classifier_conf[['area_cutoff']]
+    baseline_area <- mean(df$stationary_area[which(df$event == "N")], na.rm=T)
+    area_annotation <- quantile(df$stationary_area, 0.75, na.rm=T)[["75%"]]+area_cutoff*IQR(df$stationary_area, na.rm=T)[[1]]
+    area_limit <- max(c(
+      abs(min(c(df$stationary_area*1.5, area_annotation*1.5), na.rm=T)), 
+      abs(max(c(df$stationary_area*1.5, area_annotation*1.5), na.rm=T))
+    ), na.rm=T)
     
     area_plot <- base_plot +
       geom_line(aes(x=time, y=stationary_area)) +
-      geom_line(aes(x=time, y=scaled_area), alpha=0.3) +
-      annotate(geom="segment", x=-Inf, xend=Inf, y=area_annotation, yend=area_annotation, color="black", alpha=0.7) +
-      scale_y_continuous(name="Area", limits=c(-1,1)) +
-      scale_x_continuous(name="Time (s)", labels=format_time_labels(), sec.axis = sec_axis(~./frame_rate, name="Frame", labels=format_frame_labels()))
+      annotate(geom="segment", x=-Inf, xend=Inf, y=area_annotation, yend=area_annotation, color="red", alpha=0.7) +
+      annotate(geom="segment", x=-Inf, xend=Inf, y=baseline_area, yend=baseline_area, linetype="dashed", alpha=0.7) +
+      scale_y_continuous(name="Area", limits=c(-area_limit, area_limit)) +
+      scale_x_continuous(name="", labels=format_time_labels(), sec.axis = sec_axis(~./frame_rate, name="", labels=format_frame_labels()))
     
-    plots[[(length(plots)+1)]] <- plot_grid(median_plot, area_plot, rupture_deriv_plot, nrow=3, align="v", rel_heights=c(1.4,1.3,1.8))
+    plots[[(length(plots)+1)]] <- plot_grid(median_plot, area_plot, nrow=2, align="v", rel_heights=c(1.4,1.8))
 
     # Plots to put under movies
     movie_plot <- ggplot(df, aes(x=frame, y=stationary_median))
@@ -277,7 +284,7 @@ for(m in 1:length(data_sets)) {
     if(is_interesting) {
       interesting_plots[[length(interesting_plots)+1]] <- base_plot +
         geom_line(aes(x=time, y=stationary_median)) +
-        ggtitle(paste0(data_set, ":", pid)) +
+        ggtitle(paste0(strtrim(data_set, 5), ":", pid)) +
         scale_y_continuous(name="", limits=c(-1,1), labels=c()) +
         scale_x_continuous(name="", labels=c()) +
         theme(axis.title=element_blank(),
@@ -293,7 +300,7 @@ if(length(interesting_plots) > 0) {
 }
 
 # Print out
-pdf(output, width=10, height=8.25, onefile=T)
+cairo_pdf(output, width=10, height=8.25, onefile=T)
 for(i in 1:length(plots)) {
   print(plots[[i]])
 }

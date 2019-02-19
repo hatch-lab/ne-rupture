@@ -1,8 +1,12 @@
 {
   "median_cutoff": 2.2,
   "area_cutoff": 2.2,
+
+  "median_iqr_ratio_cutoff": 3,
+  "area_iqr_ratio_cutoff": 3,
   
-  "baseline_median_scale_factor": 0.92,
+  "baseline_median_scale_factor_f": 0.92,
+  "baseline_median_scale_factor_r": 0.90,
 
   "sliding_window_width": 767,
   "sliding_window_step": 235,

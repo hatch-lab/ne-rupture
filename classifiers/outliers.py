@@ -108,7 +108,7 @@ def classify_particle_events(p_data, convergence_limit = 3E-6):
   #p_data = classify_events(p_data, CONF)
 
   # Filter out events that were captured incorrectly
-  #p_data = filter_events(p_data, CONF)
+  # p_data = filter_events(p_data, CONF)
 
   return p_data
 
@@ -124,12 +124,15 @@ def seed_events(p_data, conf):
     Panda DataFrame The modified particle data
   """
 
+  # percentile doesn't handle NaNs very well
+  median_data = p_data['stationary_median'].dropna()
+  area_data = p_data['stationary_area'].dropna()
+
   idx = (
-    (p_data['stationary_median'] < np.quantile(p_data['stationary_median'], 0.25)-conf['median_cutoff']*iqr(p_data['stationary_median'])) &
-    (p_data['stationary_area'] < np.quantile(p_data['stationary_area'], 0.25)+conf['area_cutoff']*iqr(p_data['stationary_area']))
+    (p_data['stationary_median'] < np.quantile(median_data, 0.25)-conf['median_cutoff']*iqr(median_data)) &
+    (p_data['stationary_area'] > np.quantile(area_data, 0.75)+conf['area_cutoff']*iqr(area_data))
   )
 
-  idx = get_initial_ruptures(p_data, conf)
   p_data.loc[idx, 'event'] = '?'
 
   return p_data
@@ -160,30 +163,34 @@ def extend_events(p_data, conf):
     old_baseline_median = 1E6
 
     while(math.pow(baseline_median - old_baseline_median, 2) >= convergence_limit):
-      start = np.max(p_data.loc[(p_data['event_id'] == event_id), 'frame'])
+      # Look forward
+      start = np.min(p_data.loc[(p_data['event_id'] == event_id), 'frame'])
 
-      reach_baseline_idx = (
+      stop_idx = (
         (p_data['frame'] > start) &
-        (p_data['stationary_median'] > baseline_median*conf['baseline_scale_factor'])
+        (p_data['stationary_median'] > baseline_median*conf['baseline_median_scale_factor_f'])
       )
 
-      if not reach_baseline_idx.any():
+      if not stop_idx.any():
         # There are no frames beyond start that reach baseline
-        reach_baseline = np.max(p_data['frame'])+1
+        stop = np.max(p_data['frame'])+1
       else:
         # Get the first frame that satisfies the above conditions
-        reach_baseline = np.min(p_data.loc[reach_baseline_idx, 'frame'])
+        stop = np.min(p_data.loc[stop_idx, 'frame'])
 
-      # Find the next event
-      next_start_idx = (
-        (p_data['event_id'] != -1) & 
-        (p_data['event_id'] != event_id) & 
-        (p_data['frame'] > start)
+      # Look backward
+      start_idx = (
+        (p_data['frame'] < start) &
+        (p_data['stationary_median'] > baseline_median*conf['baseline_median_scale_factor_r'])
       )
+
+      if start_idx.any():
+        # Get the last frame that satisfies the above conditions
+        start = np.max(p_data.loc[start_idx, 'frame'])
 
       idx = (
         (p_data['frame'] > start) &
-        (p_data['frame'] < reach_baseline)
+        (p_data['frame'] < stop)
       )
       p_data.loc[idx, 'event'] = '?'
       p_data.loc[idx, 'event_id'] = event_id
@@ -255,24 +262,36 @@ def filter_events(p_data, conf):
   Returns
     Panda DataFrame The modified data frame
   """
-  event_ids = p_data.loc[(p_data['event_id'] != -1), 'event_id'].unique()
-  to_remove = []
+  # Remove cases where the IQR_event/IQR_noevent for median derivative/area derivative > 3
+  # event_ids = p_data.loc[(p_data['event_id'] != -1), 'event_id'].unique()
+  # to_remove = []
 
-  for event_id in event_ids:
-    event = p_data.loc[(p_data['event_id'] == event_id),:]
+  # baseline_median_iqr = iqr(p_data.loc[(p_data['event_id' != -1]), 'median_derivative'].dropna())
+  # baseline_area_iqr = iqr(p_data.loc[(p_data['event_id' != -1]), 'area_derivative'].dropna())
 
-    if 'R' not in event['event'].unique():
-      # We're only doing ruptures
-      continue
+  # for event_id in event_ids:
+  #   event = p_data.loc[(p_data['event_id'] == event_id),:]
+    
+  #   median_iqr = iqr(event['median_derivative'].dropna())
+  #   if median_iqr/baseline_median_iqr < conf['median_iqr_ratio_cutoff']:
+  #     to_remove.append(event_id)
 
-    # Remove ruptures for which there are no repair events
-    if 'E' not in event['event'].unique():
-      to_remove.append(event_id)
+  #   area_iqr = iqr(event['area_derivative'].dropna())
+  #   if area_iqr/baseline_area_iqr < conf['area_iqr_ratio_cutoff']:
+  #     to_remove.append(event_id)
+
+  #   if 'R' not in event['event'].unique():
+  #     # We're only doing ruptures
+  #     continue
+
+  #   # Remove ruptures for which there are no repair events
+  #   if 'E' not in event['event'].unique():
+  #     to_remove.append(event_id)
 
   to_remove = list(set(to_remove))
 
-  p_data.loc[(p_data['event_id'].isin(to_remove)),'event'] = 'N'
-  p_data.loc[(p_data['event_id'].isin(to_remove)),'event_id'] = -1
+  # p_data.loc[(p_data['event_id'].isin(to_remove)),'event'] = 'N'
+  # p_data.loc[(p_data['event_id'].isin(to_remove)),'event_id'] = -1
 
   return p_data
 
@@ -356,15 +375,16 @@ if __name__ == '__main__':
   # groups = data.groupby([ 'data_set', 'particle_id' ])
   # results = []
   # for name, group in groups:
-  #   if name[1] != '053':
+  #   if name[1] != '001':
   #     continue
-  #   res = classify_particle_events(group)
+  #   res = classify_particle_events(group.copy())
   #   results.append(res)
   # exit()
 
   # data = pd.concat(results)
   data = apply_parallel(data.groupby([ 'data_set', 'particle_id' ]), classify_particle_events)
 
+output_path.mkdir(exist_ok=True)
 output_file_path = (output_path / (file_name)).resolve()
 data.to_csv(str(output_file_path), header=True, encoding='utf-8', index=None)
 
