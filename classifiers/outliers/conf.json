@@ -10,5 +10,7 @@
 
   "sliding_window_width": 767,
   "sliding_window_step": 235,
-  "convergence_limit": 0.00003
+  "convergence_limit": 0.00003,
+
+  "optical_event_cutoff": 0.09
 }

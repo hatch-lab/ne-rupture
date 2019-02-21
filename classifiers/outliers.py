@@ -9,18 +9,19 @@ Also attempts to identify the rate of GFP import during repair by fitting a one-
 to the intensity data. (Not yet.)
 
 Usage:
-  basic.py DATA_FILE OUTPUT [--file-name=results.csv] [--run-qa=0] [--img-dir=0] [--conf=0] [--max-processes=None]
+  basic.py INPUT OUTPUT [--input-name=data.csv] [--output-name=results.csv] [--skip-graphs=0] [--img-dir=0] [--conf=0] [--max-processes=None]
 
 Arguments:
-  DATA_FILE Path to processed data csv file
+  INPUT Path to the directory containing the processed output file
   OUTPUT Path to where the classified data CSV file should be saved
 
 Options:
   -h --help Show this screen.
   --version Show version.
-  --file-name=<string> [defaults: results.csv] The name of the resulting CSV file
-  --run-qa=<bool> [defaults: False] If True, will output graphs and videos
-  --img-dir=<string> [defaults: None] The directory that contains TIFF images of each frame, for outputting videos.
+  --input-name=<string> [defaults: data.csv] The name of the input CSV file
+  --output-name=<string> [defaults: results.csv] The name of the resulting CSV file
+  --skip-graphs=<bool> [defaults: False] If True, won't output graphs or videos
+  --img-dir=<string> [defaults: INPUT/../images] The directory that contains TIFF images of each frame, for outputting videos.
   --conf=<string> [defaults: None] Override configuration options in conf.json with a JSON string.
   --max-processes=<int> [defaults: cpu_count()] The number of processes this classifier can use
 
@@ -43,11 +44,13 @@ import math
 import numpy as np
 import pandas as pd
 import csv
+import cv2
 import json
 from scipy.stats import iqr
 from multiprocessing import Pool, cpu_count
 import subprocess
 from time import sleep
+from PIL import Image
 
 arguments = docopt(__doc__, version='NE-classifier 1.0')
 
@@ -61,11 +64,12 @@ else:
     CONF = json.load(file)
 
 ### Arguments and inputs
-data_file_path = (ROOT_PATH / (arguments['DATA_FILE'])).resolve()
+input_path = (ROOT_PATH / (arguments['INPUT'])).resolve()
 output_path = (ROOT_PATH / (arguments['OUTPUT'])).resolve()
-file_name = arguments['--file-name'] if arguments['--file-name'] else "results.csv"
-run_qa = True if arguments['--run-qa'] else False
-tiff_path = Path(arguments['--img-dir']).resolve() if arguments['--img-dir'] else ""
+data_file_path = input_path / (arguments['--input-name']) if arguments['--input-name'] else input_path / "data.csv"
+tiff_path = input_path / (arguments['--img-dir']) if arguments['--img-dir'] else (input_path / ("../images/")).resolve()
+output_name = arguments['--outpuit-name'] if arguments['--output-name'] else "results.csv"
+skip_graphs = True if arguments['--skip-graphs'] else False
 max_processes = int(arguments['--max-processes']) if arguments['--max-processes'] else cpu_count()
 
 
@@ -104,11 +108,11 @@ def classify_particle_events(p_data, convergence_limit = 3E-6):
   # Find when events begin to recover
   p_data = find_event_recoveries(p_data, CONF)
 
+  # Filter out events that were captured incorrectly
+  p_data = filter_events(p_data, CONF)
+
   # Figure out what the events are
   #p_data = classify_events(p_data, CONF)
-
-  # Filter out events that were captured incorrectly
-  # p_data = filter_events(p_data, CONF)
 
   return p_data
 
@@ -208,6 +212,154 @@ def extend_events(p_data, conf):
   
   return p_data
 
+def filter_events(p_data, conf):
+  """
+  Filter out events
+
+  Arguments:
+    p_data Panda DataFrame The particle data
+    conf dict Configuration options 
+
+  Returns
+    Panda DataFrame The modified data frame
+  """
+  # Remove events where the Imaris-recorded change in area is
+  # substantially different from just counting the pixels
+  event_ids = p_data.loc[(p_data['event_id'] != -1), 'event_id'].unique()
+  resolutions = {}
+  to_remove = []
+
+  for event_id in event_ids:
+    event_data = p_data.loc[( p_data['event_id'] == event_id), :]
+
+    data_set = event_data['data_set'].iloc[0]
+
+    end_frame_i = np.max(event_data['frame'])
+    prev_frame_i = np.min(event_data['frame'])
+
+    prev_frame_data = event_data[( event_data['frame'] == prev_frame_i )]
+    prev_frame = None
+
+    keep_event = False
+
+    while(1):
+      if event_data.loc[( event_data['frame'] > prev_frame_i ), 'frame'].count() <= 0:
+        break
+
+      this_frame_i = np.min(event_data.loc[( event_data['frame'] > prev_frame_i ), 'frame'])
+
+      this_frame_file_name = str(this_frame_i).zfill(4) + '.tif'
+      this_frame_path = tiff_path / (data_set + "/" + this_frame_file_name)
+
+      # Get our resolutions (so we can map x-y coords to pixels)
+      if data_set not in resolutions:
+        with Image.open(str(this_frame_path)) as img:
+          resolutions[data_set] = img.info['resolution']
+      
+      this_frame_data = event_data.loc[( event_data['frame'] == this_frame_i ), :]
+      this_frame = crop_frame(this_frame_path, ( prev_frame_data, this_frame_data ), resolutions[data_set])
+
+      if prev_frame is None:
+        prev_frame_i = this_frame_i
+        prev_frame = this_frame
+        continue
+
+      print(p_data['particle_id'].iloc[0], event_id, this_frame_i, this_frame.sum()/prev_frame.sum(), this_frame_data['median_derivative'].iloc[0])
+
+      cv2.imshow('cropped',this_frame)
+      c = cv2.waitKey(0)
+      if 'q' == chr(c & 255):
+        exit()
+
+      # if abs(1-this_frame.sum()/prev_frame.sum()) > conf['optical_event_cutoff']:
+      #   keep_event = True
+      #   break
+
+      prev_frame_i = this_frame_i
+      prev_frame = this_frame
+
+    if keep_event is False:
+      to_remove.append(event_id)
+
+  #   # Remove ruptures for which there are no repair events
+  #   if 'E' not in event['event'].unique():
+  #     to_remove.append(event_id)
+
+  to_remove = list(set(to_remove))
+
+  p_data.loc[(p_data['event_id'].isin(to_remove)),'event'] = 'N'
+  p_data.loc[(p_data['event_id'].isin(to_remove)),'event_id'] = -1
+
+  return p_data
+
+def crop_frame(frame_path, coords, resolution, start_width=100, start_height=100):
+  x_conversion = resolution[0]
+  y_conversion = resolution[1]
+
+  prev_x = int(round(coords[0]['x'].iloc[0]*x_conversion))
+  prev_y = int(round(coords[0]['y'].iloc[0]*y_conversion))
+
+  this_x = int(round(coords[1]['x'].iloc[0]*x_conversion))
+  this_y = int(round(coords[1]['y'].iloc[0]*y_conversion))
+
+  diff_x = abs(prev_x-this_x)
+  diff_y = abs(prev_y-this_y)
+
+  width = start_width - diff_x
+  height = start_height - diff_y
+
+  x = np.max([ prev_x, this_x ])
+  y = np.max([ prev_y, this_y ])
+
+  frame = cv2.imread(str(frame_path), cv2.IMREAD_GRAYSCALE)
+
+  y_radius = int(math.floor(height/2))
+  x_radius = int(math.floor(width/2))
+
+  # Check our bounds
+  if y-y_radius < 0:
+    # We need to add a border to the top
+    offset = abs(y-y_radius)
+    border_size = ( offset, len(frame[0]) )
+    border = np.zeros(border_size, dtype=frame.dtype)
+    frame = np.concatenate((border, frame), axis=0)
+
+    y += offset # What was (0, 0) is now (0, [offset])
+
+  if y+y_radius > frame.shape[0]-1:
+    # We need to add a border to the bottom
+    offset = abs(frame.shape[0]-1-y_radius)
+    border_size = ( offset, len(frame[0]) )
+    border = np.zeros(border_size, dtype=frame.dtype)
+    frame = np.concatenate((frame, border), axis=0)
+    # What was (0, 0) is still (0, 0)
+
+  if x-x_radius < 0:
+    # We need to add a border to the left
+    offset = abs(x-x_radius)
+    border_size = ( len(frame), offset )
+    border = np.zeros(border_size, dtype=frame.dtype)
+    frame = np.concatenate((border, frame), axis=1)
+
+    x += offset # What was (0, 0) is now ([offset], 0)
+
+  if x+x_radius > frame.shape[1]-1:
+    # We need to add a border to the left
+    offset = abs(frame.shape[1]-1-x_radius)
+    border_size = ( len(frame), offset )
+    border = np.zeros(border_size, dtype=frame.dtype)
+    frame = np.concatenate((frame, border), axis=1)
+    # What was (0, 0) is still (0, 0)
+
+  left = x-x_radius + (width-2*x_radius) # To account for rounding errors
+  right = x+x_radius
+  top = y-y_radius + (width-2*y_radius)
+  bottom = y+y_radius
+  frame = frame[top:bottom, left:right]
+
+  return frame
+
+
 def find_event_recoveries(p_data, conf):
   """
   Find recoveries
@@ -250,50 +402,6 @@ def find_event_recoveries(p_data, conf):
       p_data.loc[((p_data['time'] >= recovery_start) & (p_data['time'] != event_start) & (p_data['event_id'] == event_id)), 'event'] = recovery_label
 
   return p_data.loc[:, col_names]
-
-def filter_events(p_data, conf):
-  """
-  Filter out events
-
-  Arguments:
-    p_data Panda DataFrame The particle data
-    conf dict Configuration options 
-
-  Returns
-    Panda DataFrame The modified data frame
-  """
-  # Remove cases where the IQR_event/IQR_noevent for median derivative/area derivative > 3
-  # event_ids = p_data.loc[(p_data['event_id'] != -1), 'event_id'].unique()
-  # to_remove = []
-
-  # baseline_median_iqr = iqr(p_data.loc[(p_data['event_id' != -1]), 'median_derivative'].dropna())
-  # baseline_area_iqr = iqr(p_data.loc[(p_data['event_id' != -1]), 'area_derivative'].dropna())
-
-  # for event_id in event_ids:
-  #   event = p_data.loc[(p_data['event_id'] == event_id),:]
-    
-  #   median_iqr = iqr(event['median_derivative'].dropna())
-  #   if median_iqr/baseline_median_iqr < conf['median_iqr_ratio_cutoff']:
-  #     to_remove.append(event_id)
-
-  #   area_iqr = iqr(event['area_derivative'].dropna())
-  #   if area_iqr/baseline_area_iqr < conf['area_iqr_ratio_cutoff']:
-  #     to_remove.append(event_id)
-
-  #   if 'R' not in event['event'].unique():
-  #     # We're only doing ruptures
-  #     continue
-
-  #   # Remove ruptures for which there are no repair events
-  #   if 'E' not in event['event'].unique():
-  #     to_remove.append(event_id)
-
-  to_remove = list(set(to_remove))
-
-  # p_data.loc[(p_data['event_id'].isin(to_remove)),'event'] = 'N'
-  # p_data.loc[(p_data['event_id'].isin(to_remove)),'event_id'] = -1
-
-  return p_data
 
 def sliding_average(data, window, step, frame_rate):
   """
@@ -372,23 +480,23 @@ def apply_parallel(grouped, fn, *args):
   return pd.concat(rs.get(), sort=False)
 
 if __name__ == '__main__':
-  # groups = data.groupby([ 'data_set', 'particle_id' ])
-  # results = []
-  # for name, group in groups:
-  #   if name[1] != '001':
-  #     continue
-  #   res = classify_particle_events(group.copy())
-  #   results.append(res)
-  # exit()
+  groups = data.groupby([ 'data_set', 'particle_id' ])
+  results = []
+  for name, group in groups:
+    if name[1] != '111' and name[1] != '063':
+      continue
+    res = classify_particle_events(group.copy())
+    results.append(res)
+  exit()
 
-  # data = pd.concat(results)
-  data = apply_parallel(data.groupby([ 'data_set', 'particle_id' ]), classify_particle_events)
+  data = pd.concat(results)
+  # data = apply_parallel(data.groupby([ 'data_set', 'particle_id' ]), classify_particle_events)
 
 output_path.mkdir(exist_ok=True)
-output_file_path = (output_path / (file_name)).resolve()
+output_file_path = (output_path / (output_name)).resolve()
 data.to_csv(str(output_file_path), header=True, encoding='utf-8', index=None)
 
-if run_qa:
+if not skip_graphs:
   cmd = [
     "python",
     str(QA_PATH),
@@ -399,3 +507,4 @@ if run_qa:
   ]
   subprocess.call(cmd)
 
+s
