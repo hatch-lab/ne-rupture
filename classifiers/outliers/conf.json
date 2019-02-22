@@ -12,7 +12,7 @@
   "sliding_window_step": 235,
   "convergence_limit": 0.00003,
 
-  "optical_event_cutoff": 3,
-  "cell_video_width": 100,
-  "cell_video_height": 100
+  "recoveries": {
+    "R": "E"
+  }
 }

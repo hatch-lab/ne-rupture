@@ -29,7 +29,8 @@ ROOT_PATH = Path(__file__ + "/../..").resolve()
 
 sys.path.append(str(ROOT_PATH))
 
-from docopt import docopt
+from common.docopt import docopt
+from common.version import get_version
 
 import numpy as np
 import pandas as pd
@@ -73,7 +74,7 @@ def _print(silence, string):
 QA_PATH  = (ROOT_PATH / ("validate/qa.py")).resolve()
 
 ### Arguments and inputs
-arguments = docopt(__doc__, version='NE-classifier 1.0')
+arguments = docopt(__doc__, version=get_version())
 
 simple_output = True if arguments['--simple-output'] else False
 

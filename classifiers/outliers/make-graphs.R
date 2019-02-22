@@ -82,9 +82,11 @@ get_event_groups <- function(df, column) {
     "?"="#ffcccc"
   )
 
-  event_ids <- unique(df$event_id)
-  for(event_id in event_ids) {
-    event_idx <- which(df$event_id == event_id)
+  event_ids <- unique(df[,c("event_id", column)])
+  for(i in 1:nrow(event_ids)) {
+    event_id <- event_ids$event_id[[i]]
+    event <- event_ids[[column]][[i]]
+    event_idx <- which(df$event_id == event_id & df[[column]] == event)
 
     start <- min(df$time[event_idx])
     end <- max(df$time[event_idx])

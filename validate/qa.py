@@ -26,7 +26,8 @@ ROOT_PATH = Path(__file__ + "/../..").resolve()
 
 sys.path.append(str(ROOT_PATH))
 
-from docopt import docopt
+from common.docopt import docopt
+from common.version import get_version
 
 import numpy as np
 import pandas as pd
@@ -63,7 +64,7 @@ MAKE_VIDEO_PATH        = (ROOT_PATH / ("validate/render-full-video.py")).resolve
 MAX_PROCESSES          = 4
 
 ### Arguments and inputs
-arguments = docopt(__doc__, version='NE-classifier 1.0')
+arguments = docopt(__doc__, version=get_version())
 
 classifier = re.sub(r'[^a-zA-Z0-9\-\_\.\+]', '', arguments['CLASSIFIER'])
 if classifier != arguments['CLASSIFIER']:

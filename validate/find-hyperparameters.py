@@ -25,7 +25,9 @@ ROOT_PATH = Path(__file__ + "/../..").resolve()
 
 sys.path.append(str(ROOT_PATH))
 
-from docopt import docopt
+from common.docopt import docopt
+from common.version import get_version
+
 import numpy as np
 import pandas as pd
 import json
@@ -41,7 +43,7 @@ CONVERGENCE_LIMIT = 0.5 # How close scores have to be before we stop
 MAX_PROCESSES     = 4
 
 ### Arguments and inputs
-arguments = docopt(__doc__, version='NE-classifier 1.0')
+arguments = docopt(__doc__, version=get_version())
 
 num_samples = int(arguments['--samples']) if arguments['--samples'] else 1000
 init_num_samples = int(arguments['--init-samples']) if arguments['--init-samples'] else 2000

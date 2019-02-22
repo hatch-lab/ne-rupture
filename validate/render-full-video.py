@@ -22,7 +22,9 @@ ROOT_PATH = Path(__file__ + "/../..").resolve()
 
 sys.path.append(str(ROOT_PATH))
 
-from docopt import docopt
+from common.docopt import docopt
+from common.version import get_version
+
 import numpy as np
 import pandas as pd
 import csv
@@ -59,7 +61,7 @@ CIRCLE_LINE_TYPE  = cv2.LINE_AA
 
 
 ### Arguments and inputs
-arguments = docopt(__doc__, version='NE-classifier 1.0')
+arguments = docopt(__doc__, version=get_version())
 
 images_path = Path(arguments['IMAGES_DIR']).resolve()
 csv_path = Path(arguments['INPUT_CSV']).resolve()

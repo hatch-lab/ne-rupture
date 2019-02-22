@@ -9,25 +9,26 @@ Also attempts to identify the rate of GFP import during repair by fitting a one-
 to the intensity data. (Not yet.)
 
 Usage:
-  basic.py DATA_FILE OUTPUT [--file-name=results.csv] [--run-qa=0] [--img-dir=0] [--conf=0] [--max-processes=None]
+  basic.py INPUT OUTPUT [--input-name=data.csv] [--output-name=results.csv] [--skip-graphs=0] [--img-dir=0] [--conf=0] [--max-processes=None]
 
 Arguments:
-  DATA_FILE Path to processed data csv file
+  INPUT Path to the directory containing the processed output file
   OUTPUT Path to where the classified data CSV file should be saved
 
 Options:
   -h --help Show this screen.
   --version Show version.
-  --file-name=<string> [defaults: results.csv] The name of the resulting CSV file
-  --run-qa=<bool> [defaults: False] If True, will output graphs and videos
-  --img-dir=<string> [defaults: None] The directory that contains TIFF images of each frame, for outputting videos.
+  --input-name=<string> [defaults: data.csv] The name of the input CSV file
+  --output-name=<string> [defaults: results.csv] The name of the resulting CSV file
+  --skip-graphs=<bool> [defaults: False] If True, won't output graphs or videos
+  --img-dir=<string> [defaults: INPUT/../images] The directory that contains TIFF images of each frame, for outputting videos.
   --conf=<string> [defaults: None] Override configuration options in conf.json with a JSON string.
   --max-processes=<int> [defaults: cpu_count()] The number of processes this classifier can use
 
 Output:
-  Writes a CSV to DATA_DIR with all classified events (the null event is not included).
-  In addition, if run-qa is true and img-dir is supplied, annotated videos of each cell-event will be produced, 
-  as well as a full-size, annotated video.
+  Writes a CSV to OUTPUT with all classified events (the null event is not included).
+  In addition, annotated videos of each cell-event will be produced, as well as a full-size, 
+  annotated video.
 """
 import sys
 import os
@@ -37,7 +38,8 @@ ROOT_PATH = Path(__file__ + "/../..").resolve()
 
 sys.path.append(str(ROOT_PATH))
 
-from docopt import docopt
+from common.docopt import docopt
+from common.version import get_version
 
 import math
 import numpy as np
@@ -48,7 +50,7 @@ from multiprocessing import Pool, cpu_count
 import subprocess
 from time import sleep
 
-arguments = docopt(__doc__, version='NE-classifier 1.0')
+arguments = docopt(__doc__, version=get_version())
 
 ### Constant for getting our base input dir
 QA_PATH  = (ROOT_PATH / ("validate/qa.py")).resolve()
@@ -60,11 +62,12 @@ else:
     CONF = json.load(file)
 
 ### Arguments and inputs
-data_file_path = (ROOT_PATH / (arguments['DATA_FILE'])).resolve()
+input_path = (ROOT_PATH / (arguments['INPUT'])).resolve()
 output_path = (ROOT_PATH / (arguments['OUTPUT'])).resolve()
-file_name = arguments['--file-name'] if arguments['--file-name'] else "results.csv"
-run_qa = True if arguments['--run-qa'] else False
-tiff_path = Path(arguments['--img-dir']).resolve() if arguments['--img-dir'] else ""
+data_file_path = input_path / (arguments['--input-name']) if arguments['--input-name'] else input_path / "data.csv"
+tiff_path = input_path / (arguments['--img-dir']) if arguments['--img-dir'] else (input_path / ("../images/")).resolve()
+output_name = arguments['--outpuit-name'] if arguments['--output-name'] else "results.csv"
+skip_graphs = True if arguments['--skip-graphs'] else False
 max_processes = int(arguments['--max-processes']) if arguments['--max-processes'] else cpu_count()
 
 
@@ -564,10 +567,10 @@ if __name__ == '__main__':
   data = apply_parallel(data.groupby([ 'data_set', 'particle_id' ]), classify_particle_events)
 
 output_path.mkdir(exist_ok=True)
-output_file_path = (output_path / (file_name)).resolve()
+output_file_path = (output_path / (output_name)).resolve()
 data.to_csv(str(output_file_path), header=True, encoding='utf-8', index=None)
 
-if run_qa:
+if not skip_graphs:
   cmd = [
     "python",
     str(QA_PATH),

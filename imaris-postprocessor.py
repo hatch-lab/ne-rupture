@@ -21,7 +21,8 @@ Output:
 import sys
 import os
 
-from docopt import docopt
+from common.docopt import docopt
+from common.version import get_version
 
 import numpy as np
 import pandas as pd
@@ -35,7 +36,7 @@ from statsmodels.tsa.stattools import kpss
 """
 Arguments and inputs
 """
-arguments = docopt(__doc__, version='NE-classifier 1.0')
+arguments = docopt(__doc__, version=get_version())
 
 input_dir = arguments['INPUT_DIR']
 output_dir = arguments['OUTPUT_DIR']

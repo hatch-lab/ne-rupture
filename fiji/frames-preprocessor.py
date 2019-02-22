@@ -24,7 +24,7 @@ import sys
 import os
 import re
 
-from docopt import docopt
+from common.docopt import docopt
 
 from ij import IJ
 from ij import ImagePlus

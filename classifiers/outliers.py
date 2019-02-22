@@ -26,9 +26,9 @@ Options:
   --max-processes=<int> [defaults: cpu_count()] The number of processes this classifier can use
 
 Output:
-  Writes a CSV to DATA_DIR with all classified events (the null event is not included).
-  In addition, if run-qa is true and img-dir is supplied, annotated videos of each cell-event will be produced, 
-  as well as a full-size, annotated video.
+  Writes a CSV to OUTPUT with all classified events (the null event is not included).
+  In addition, annotated videos of each cell-event will be produced, as well as a full-size, 
+  annotated video.
 """
 import sys
 import os
@@ -39,6 +39,7 @@ ROOT_PATH = Path(__file__ + "/../..").resolve()
 sys.path.append(str(ROOT_PATH))
 
 from common.docopt import docopt
+from common.version import get_version
 
 import math
 import numpy as np
@@ -53,7 +54,7 @@ from time import sleep
 from PIL import Image
 import common.video as hatchvid
 
-arguments = docopt(__doc__, version='NE-classifier 1.0')
+arguments = docopt(__doc__, version=get_version())
 
 ### Constant for getting our base input dir
 QA_PATH  = (ROOT_PATH / ("validate/qa.py")).resolve()
@@ -106,14 +107,14 @@ def classify_particle_events(p_data, convergence_limit = 3E-6):
   # Find event ends
   p_data = extend_events(p_data, CONF)
 
+  # Figure out what the events are
+  p_data = classify_events(p_data, CONF)
+
   # Find when events begin to recover
   p_data = find_event_recoveries(p_data, CONF)
 
   # Filter out events that were captured incorrectly
   p_data = filter_events(p_data, CONF)
-
-  # Figure out what the events are
-  #p_data = classify_events(p_data, CONF)
 
   return p_data
 
@@ -213,6 +214,12 @@ def extend_events(p_data, conf):
   
   return p_data
 
+def classify_events(p_data, conf):
+  # Identify mitotic events
+  p_data.loc[(p_data['event'] == '?'), 'event'] = 'R'
+
+  return p_data
+
 def filter_events(p_data, conf):
   """
   Filter out events
@@ -224,80 +231,7 @@ def filter_events(p_data, conf):
   Returns
     Panda DataFrame The modified data frame
   """
-  # Remove events where the Imaris-recorded change in area is
-  # substantially different from just counting the pixels
-  event_idx = ( p_data['event_id'] != -1 )
-  event_ids = p_data.loc[event_idx, 'event_id'].unique()
   to_remove = []
-
-  # Find needed flow frames
-  flow_frames = {}
-  raw_frames = {}
-  resolutions = {}
-
-  for event_id in event_ids:
-    event_data = p_data.loc[( p_data['event_id'] == event_id), :]
-    if event_data['frame'].count() <= 6:
-      continue
-
-    data_set = event_data['data_set'].iloc[0]
-    keep_event = False
-
-    end_frame_i = np.max(event_data['frame'])
-    prev_frame_i = np.min(event_data['frame'])-1
-    prev_frame = None
-
-    while(1):
-      if event_data.loc[( event_data['frame'] > prev_frame_i ), 'frame'].count() <= 0:
-        break
-
-      this_frame_i = np.min(event_data.loc[( event_data['frame'] > prev_frame_i ), 'frame'])
-
-      this_frame_file_name = str(this_frame_i).zfill(4) + '.tif'
-      this_frame_path = tiff_path / (data_set + "/" + this_frame_file_name)
-
-      # Get our resolutions (so we can map x-y coords to pixels)
-      if data_set not in resolutions:
-        with Image.open(str(this_frame_path)) as img:
-          resolutions[data_set] = img.info['resolution']
-
-      this_frame = cv2.imread(str(this_frame_path), cv2.IMREAD_GRAYSCALE)
-
-      x = int(round(event_data.loc[( event_data['frame'] == this_frame_i ), 'x'].iloc[0]*resolutions[data_set][0]))
-      y = int(round(event_data.loc[( event_data['frame'] == this_frame_i ), 'y'].iloc[0]*resolutions[data_set][1]))
-
-      this_frame = hatchvid.crop_frame(this_frame, x, y, conf['cell_video_width'], conf['cell_video_height'], is_color=False)
-      
-      if prev_frame is None:
-        prev_frame_i = this_frame_i
-        prev_frame = this_frame
-        continue
-
-      transform = cv2.estimateRigidTransform(prev_frame, this_frame, False)
-      if transform is None:
-        keep_event = True
-        prev_frame_i = this_frame_i
-        prev_frame = this_frame
-        continue
-        # break
-
-      # total_scale = abs(transform[0][2]) + abs(transform[1][2])
-      # if total_scale > conf['optical_event_cutoff']:
-      #   keep_event = True
-      #   break
-      print(", ".join([ str(p_data['particle_id'].iloc[0]), str(event_id), str(this_frame_i), str(transform[0][0]), str(transform[0][1]), str(transform[0][2]), str(transform[1][2]) ] ))
-      # print(vsigmoid(this_frame, 255, 1, 60).sum()/vsigmoid(prev_frame, 255, 1, 60).sum())
-      # cv2.imshow('prev', prev_frame)
-      # cv2.imshow('this', this_frame)
-      # c = cv2.waitKey(0)
-      # if 'q' == chr(c & 255):
-      #   exit()
-
-      prev_frame_i = this_frame_i
-      prev_frame = this_frame
-
-    if keep_event is False:
-      to_remove.append(event_id)
 
   #   # Remove ruptures for which there are no repair events
   #   if 'E' not in event['event'].unique():
@@ -309,24 +243,6 @@ def filter_events(p_data, conf):
   p_data.loc[(p_data['event_id'].isin(to_remove)),'event_id'] = -1
 
   return p_data
-
-def sigmoid(x, L, k, x0):
-  """Returns a standard sigmoid function
-
-  Args:
-    x (float|int): The input value
-    L (float|int): The maximum value returned
-    k (float|int): The steepness of the curve
-    x0 (float|int): The center of the curve
-
-  Returns:
-    float|int
-  """
-  return L/(1+math.exp(-k*(x-x0)))
-
-# Make sigmoid available for numpy arrays
-vsigmoid = np.vectorize(sigmoid)
-
 
 def find_event_recoveries(p_data, conf):
   """
@@ -357,7 +273,7 @@ def find_event_recoveries(p_data, conf):
 
     event = p_data.loc[(p_data['event_id'] == event_id),:]
     event_type = event['event'].iloc[0]
-    recovery_label = 'R'
+    recovery_label = conf['recoveries'][event_type] if event_type in conf['recoveries'] else event_type
     
     idx = (event['smoothed'].diff() > 0)
 
@@ -448,19 +364,19 @@ def apply_parallel(grouped, fn, *args):
   return pd.concat(rs.get(), sort=False)
 
 if __name__ == '__main__':
-  print(", ".join([ "particle_id", "event_id", "frame", "a", "b", "c", "d" ] ))
-  groups = data.groupby([ 'data_set', 'particle_id' ])
-  results = []
-  for name, group in groups:
-    if name[1] not in [ '025', '060', '063', '090' ]:
-    # if name[1] not in [ '001', '012', '022', '028', '034', '096', '111', '112' ]:
-      continue
-    res = classify_particle_events(group.copy())
-    results.append(res)
-  exit()
+  # print(", ".join([ "particle_id", "event_id", "frame", "a", "b", "c", "d" ] ))
+  # groups = data.groupby([ 'data_set', 'particle_id' ])
+  # results = []
+  # for name, group in groups:
+  #   if name[1] not in [ '025', '060', '063', '090' ]:
+  #   # if name[1] not in [ '001', '012', '022', '028', '034', '096', '111', '112' ]:
+  #     continue
+  #   res = classify_particle_events(group.copy())
+  #   results.append(res)
+  # exit()
 
-  data = pd.concat(results)
-  # data = apply_parallel(data.groupby([ 'data_set', 'particle_id' ]), classify_particle_events)
+  # data = pd.concat(results)
+  data = apply_parallel(data.groupby([ 'data_set', 'particle_id' ]), classify_particle_events)
 
 output_path.mkdir(exist_ok=True)
 output_file_path = (output_path / (output_name)).resolve()
@@ -476,3 +392,5 @@ if not skip_graphs:
     "--img-dir=" + str(tiff_path)
   ]
   subprocess.call(cmd)
+
+  

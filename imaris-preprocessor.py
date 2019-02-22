@@ -28,7 +28,7 @@ from pathlib import Path
 
 ROOT_PATH = Path(__file__ + "/..").resolve()
 
-from docopt import docopt
+from common.docopt import docopt
 
 import subprocess
 import glob
