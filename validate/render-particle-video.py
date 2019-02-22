@@ -36,6 +36,7 @@ import cv2
 import math
 import re
 from PIL import Image
+import common.video as hatchvid
 
 ### Arguments and inputs
 arguments = docopt(__doc__, version='NE-classifier 1.0')
@@ -49,53 +50,6 @@ width = int(arguments['--width']) if arguments['--width'] else 100
 height = int(arguments['--height']) if arguments['--height'] else 100
 scale_factor = float(arguments['--scale-factor']) if arguments['--scale-factor'] else 3.0
 graph_path = Path(arguments['--graph-file']).resolve() if arguments['--graph-file'] else False
-
-def crop_frame(frame, x, y, width, height, is_color=False):
-  y_radius = int(math.floor(height/2))
-  x_radius = int(math.floor(width/2))
-
-  # Check our bounds
-  if y-y_radius < 0:
-    # We need to add a border to the top
-    offset = abs(y-y_radius)
-    border_size = ( offset, len(frame[0]), 3 ) if is_color else ( offset, len(frame[0]) )
-    border = np.zeros(border_size, dtype=frame.dtype)
-    frame = np.concatenate((border, frame), axis=0)
-
-    y += offset # What was (0, 0) is now (0, [offset])
-
-  if y+y_radius > frame.shape[0]-1:
-    # We need to add a border to the bottom
-    offset = abs(frame.shape[0]-1-y_radius)
-    border_size = ( offset, len(frame[0]), 3 ) if is_color else ( offset, len(frame[0]) )
-    border = np.zeros(border_size, dtype=frame.dtype)
-    frame = np.concatenate((frame, border), axis=0)
-    # What was (0, 0) is still (0, 0)
-
-  if x-x_radius < 0:
-    # We need to add a border to the left
-    offset = abs(x-x_radius)
-    border_size = ( len(frame), offset, 3 ) if is_color else ( len(frame), offset )
-    border = np.zeros(border_size, dtype=frame.dtype)
-    frame = np.concatenate((border, frame), axis=1)
-
-    x += offset # What was (0, 0) is now ([offset], 0)
-
-  if x+x_radius > frame.shape[1]-1:
-    # We need to add a border to the left
-    offset = abs(frame.shape[1]-1-x_radius)
-    border_size = ( len(frame), offset, 3 ) if is_color else ( len(frame), offset )
-    border = np.zeros(border_size, dtype=frame.dtype)
-    frame = np.concatenate((frame, border), axis=1)
-    # What was (0, 0) is still (0, 0)
-
-  left = x-x_radius + (width-2*x_radius) # To account for rounding errors
-  right = x+x_radius
-  top = y-y_radius + (width-2*y_radius)
-  bottom = y+y_radius
-  frame = frame[top:bottom, left:right]
-
-  return frame
 
 def append_graph(frame, graph, this_frame_i, start_frame_i, end_frame_i):
   # Draw a line on the graph
@@ -120,7 +74,6 @@ p_data.sort_values('frame')
 zero_frame = np.zeros(( height, width ))
 zero_frame = cv2.resize(zero_frame, None, fx=scale_factor, fy=scale_factor, interpolation=cv2.INTER_LINEAR)
 zero_frame = zero_frame.astype('uint8')
-
 
 # Make output path
 (output_path / data_set).mkdir(exist_ok=True)
@@ -166,7 +119,7 @@ while(this_frame_i <= end_frame_i):
     y = int(round(coords['y'].iloc[0]*y_conversion))
 
     # Crop down to just this particle
-    frame = crop_frame(raw_frame, x, y, width, height)
+    frame = hatchvid.crop_frame(raw_frame, x, y, width, height)
     
     # Resize
     frame = cv2.resize(frame, None, fx=scale_factor, fy=scale_factor, interpolation=cv2.INTER_CUBIC)

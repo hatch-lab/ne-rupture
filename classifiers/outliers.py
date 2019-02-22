@@ -38,7 +38,7 @@ ROOT_PATH = Path(__file__ + "/../..").resolve()
 
 sys.path.append(str(ROOT_PATH))
 
-from docopt import docopt
+from common.docopt import docopt
 
 import math
 import numpy as np
@@ -51,6 +51,7 @@ from multiprocessing import Pool, cpu_count
 import subprocess
 from time import sleep
 from PIL import Image
+import common.video as hatchvid
 
 arguments = docopt(__doc__, version='NE-classifier 1.0')
 
@@ -225,21 +226,62 @@ def filter_events(p_data, conf):
   """
   # Remove events where the Imaris-recorded change in area is
   # substantially different from just counting the pixels
-  event_ids = p_data.loc[(p_data['event_id'] != -1), 'event_id'].unique()
-  resolutions = {}
+  event_idx = ( p_data['event_id'] != -1 )
+  event_ids = p_data.loc[event_idx, 'event_id'].unique()
   to_remove = []
+
+  # Find needed flow frames
+  flow_frames = {}
+  raw_frames = {}
+  resolutions = {}
+  frames = p_data.loc[event_idx, [ 'data_set', 'frame' ]].drop_duplicates()
+
+  prev_frame = None
+  for index, row in frames.iterrows():
+    data_set = row['data_set']
+    frame_i = row['frame']
+    frame_file_name = str(frame_i).zfill(4) + '.tif'
+    frame_path = tiff_path / (data_set + "/" + frame_file_name)
+
+    # Get our resolutions (so we can map x-y coords to pixels)
+    if data_set not in resolutions:
+      with Image.open(str(frame_path)) as img:
+        resolutions[data_set] = img.info['resolution']
+
+    # this_frame = vsigmoid(cv2.imread(str(frame_path), cv2.IMREAD_GRAYSCALE), 255, 0.15, 60)
+    this_frame = cv2.imread(str(frame_path), cv2.IMREAD_GRAYSCALE)
+
+    if prev_frame is None:
+      prev_frame = this_frame
+      continue
+
+    # hsv = np.uint8(np.zeros((len(this_frame), len(this_frame[0]), 3)))
+    # hsv[...,1] = 255
+    flow = cv2.calcOpticalFlowFarneback(prev_frame, this_frame, None, 0.5, 6, 2, 3, 7, 1.5, 0)
+    # flow[...,0] = cv2.normalize(flow[...,0], None, 0, 255, cv2.NORM_MINMAX)
+    flow = flow[:,:,0]
+    # flow[] = cv2.normalize(flow[...,0], None, 0, 255, cv2.NORM_MINMAX)
+    # mag, ang = cv2.cartToPolar(flow[...,0], flow[...,1])
+    # hsv[...,0] = ang*180/np.pi/2
+    # hsv[...,2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
+
+    if data_set not in flow_frames:
+      flow_frames[data_set] = {}
+      raw_frames[data_set] = {}
+    flow_frames[data_set][frame_i] = flow#cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+    raw_frames[data_set][frame_i] = this_frame
+
+    prev_frame = this_frame
+
 
   for event_id in event_ids:
     event_data = p_data.loc[( p_data['event_id'] == event_id), :]
+    if event_data['frame'].count() <= 6:
+      continue
 
     data_set = event_data['data_set'].iloc[0]
-
     end_frame_i = np.max(event_data['frame'])
-    prev_frame_i = np.min(event_data['frame'])
-
-    prev_frame_data = event_data[( event_data['frame'] == prev_frame_i )]
-    prev_frame = None
-
+    prev_frame_i = np.min(event_data['frame'])-1
     keep_event = False
 
     while(1):
@@ -248,32 +290,30 @@ def filter_events(p_data, conf):
 
       this_frame_i = np.min(event_data.loc[( event_data['frame'] > prev_frame_i ), 'frame'])
 
-      this_frame_file_name = str(this_frame_i).zfill(4) + '.tif'
-      this_frame_path = tiff_path / (data_set + "/" + this_frame_file_name)
-
-      # Get our resolutions (so we can map x-y coords to pixels)
-      if data_set not in resolutions:
-        with Image.open(str(this_frame_path)) as img:
-          resolutions[data_set] = img.info['resolution']
-      
-      this_frame_data = event_data.loc[( event_data['frame'] == this_frame_i ), :]
-      this_frame = crop_frame(this_frame_path, ( prev_frame_data, this_frame_data ), resolutions[data_set])
-
-      if prev_frame is None:
+      if this_frame_i not in flow_frames[data_set]:
         prev_frame_i = this_frame_i
-        prev_frame = this_frame
         continue
 
-      print(p_data['particle_id'].iloc[0], event_id, this_frame_i, this_frame.sum()/prev_frame.sum(), this_frame_data['median_derivative'].iloc[0])
+      flow_frame = flow_frames[data_set][this_frame_i]
 
-      cv2.imshow('cropped',this_frame)
+      x = int(round(event_data.loc[( event_data['frame'] == this_frame_i ), 'x'].iloc[0]*resolutions[data_set][0]))
+      y = int(round(event_data.loc[( event_data['frame'] == this_frame_i ), 'y'].iloc[0]*resolutions[data_set][1]))
+      
+      flow_frame = hatchvid.crop_frame(flow_frame, x, y, conf['cell_video_width'], conf['cell_video_height'], is_color=False)
+      raw_frame = hatchvid.crop_frame(raw_frames[data_set][this_frame_i], x, y, conf['cell_video_width'], conf['cell_video_height'], is_color=False)
+
+      # print(p_data['particle_id'].iloc[0], event_id, this_frame_i, flow_frame.sum(), this_frame.sum()/prev_frame.sum())
+      print(", ".join([ str(p_data['particle_id'].iloc[0]), str(event_id), str(this_frame_i), str(flow_frame.sum()), str(np.max(flow_frame)), str(np.mean(flow_frame)) ] ))
+      # print(vsigmoid(this_frame, 255, 1, 60).sum()/vsigmoid(prev_frame, 255, 1, 60).sum())
+      cv2.imshow('flow', flow_frame)
+      cv2.imshow('raw', raw_frame)
       c = cv2.waitKey(0)
       if 'q' == chr(c & 255):
         exit()
 
-      # if abs(1-this_frame.sum()/prev_frame.sum()) > conf['optical_event_cutoff']:
-      #   keep_event = True
-      #   break
+      if this_frame.sum()/prev_frame.sum() <= conf['optical_event_cutoff']:
+        keep_event = True
+        break
 
       prev_frame_i = this_frame_i
       prev_frame = this_frame
@@ -285,79 +325,29 @@ def filter_events(p_data, conf):
   #   if 'E' not in event['event'].unique():
   #     to_remove.append(event_id)
 
-  to_remove = list(set(to_remove))
+  # to_remove = list(set(to_remove))
 
-  p_data.loc[(p_data['event_id'].isin(to_remove)),'event'] = 'N'
-  p_data.loc[(p_data['event_id'].isin(to_remove)),'event_id'] = -1
+  # p_data.loc[(p_data['event_id'].isin(to_remove)),'event'] = 'N'
+  # p_data.loc[(p_data['event_id'].isin(to_remove)),'event_id'] = -1
 
   return p_data
 
-def crop_frame(frame_path, coords, resolution, start_width=100, start_height=100):
-  x_conversion = resolution[0]
-  y_conversion = resolution[1]
+def sigmoid(x, L, k, x0):
+  """Returns a standard sigmoid function
 
-  prev_x = int(round(coords[0]['x'].iloc[0]*x_conversion))
-  prev_y = int(round(coords[0]['y'].iloc[0]*y_conversion))
+  Args:
+    x (float|int): The input value
+    L (float|int): The maximum value returned
+    k (float|int): The steepness of the curve
+    x0 (float|int): The center of the curve
 
-  this_x = int(round(coords[1]['x'].iloc[0]*x_conversion))
-  this_y = int(round(coords[1]['y'].iloc[0]*y_conversion))
+  Returns:
+    float|int
+  """
+  return L/(1+math.exp(-k*(x-x0)))
 
-  diff_x = abs(prev_x-this_x)
-  diff_y = abs(prev_y-this_y)
-
-  width = start_width - diff_x
-  height = start_height - diff_y
-
-  x = np.max([ prev_x, this_x ])
-  y = np.max([ prev_y, this_y ])
-
-  frame = cv2.imread(str(frame_path), cv2.IMREAD_GRAYSCALE)
-
-  y_radius = int(math.floor(height/2))
-  x_radius = int(math.floor(width/2))
-
-  # Check our bounds
-  if y-y_radius < 0:
-    # We need to add a border to the top
-    offset = abs(y-y_radius)
-    border_size = ( offset, len(frame[0]) )
-    border = np.zeros(border_size, dtype=frame.dtype)
-    frame = np.concatenate((border, frame), axis=0)
-
-    y += offset # What was (0, 0) is now (0, [offset])
-
-  if y+y_radius > frame.shape[0]-1:
-    # We need to add a border to the bottom
-    offset = abs(frame.shape[0]-1-y_radius)
-    border_size = ( offset, len(frame[0]) )
-    border = np.zeros(border_size, dtype=frame.dtype)
-    frame = np.concatenate((frame, border), axis=0)
-    # What was (0, 0) is still (0, 0)
-
-  if x-x_radius < 0:
-    # We need to add a border to the left
-    offset = abs(x-x_radius)
-    border_size = ( len(frame), offset )
-    border = np.zeros(border_size, dtype=frame.dtype)
-    frame = np.concatenate((border, frame), axis=1)
-
-    x += offset # What was (0, 0) is now ([offset], 0)
-
-  if x+x_radius > frame.shape[1]-1:
-    # We need to add a border to the left
-    offset = abs(frame.shape[1]-1-x_radius)
-    border_size = ( len(frame), offset )
-    border = np.zeros(border_size, dtype=frame.dtype)
-    frame = np.concatenate((frame, border), axis=1)
-    # What was (0, 0) is still (0, 0)
-
-  left = x-x_radius + (width-2*x_radius) # To account for rounding errors
-  right = x+x_radius
-  top = y-y_radius + (width-2*y_radius)
-  bottom = y+y_radius
-  frame = frame[top:bottom, left:right]
-
-  return frame
+# Make sigmoid available for numpy arrays
+vsigmoid = np.vectorize(sigmoid)
 
 
 def find_event_recoveries(p_data, conf):
@@ -480,10 +470,13 @@ def apply_parallel(grouped, fn, *args):
   return pd.concat(rs.get(), sort=False)
 
 if __name__ == '__main__':
+  print(", ".join([ "particle_id", "event_id", "frame", "flow_sum", "flow_max", "flow_mean" ] ))
   groups = data.groupby([ 'data_set', 'particle_id' ])
   results = []
   for name, group in groups:
-    if name[1] != '111' and name[1] != '063':
+    if name[1] not in [ '050', '012' ]:
+    # if name[1] not in [ '050', '060', '063', '090' ]:
+    # if name[1] not in [ '001', '012', '022', '028', '034', '096', '111', '112' ]:
       continue
     res = classify_particle_events(group.copy())
     results.append(res)
