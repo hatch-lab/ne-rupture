@@ -234,45 +234,6 @@ def filter_events(p_data, conf):
   flow_frames = {}
   raw_frames = {}
   resolutions = {}
-  frames = p_data.loc[event_idx, [ 'data_set', 'frame' ]].drop_duplicates()
-
-  prev_frame = None
-  for index, row in frames.iterrows():
-    data_set = row['data_set']
-    frame_i = row['frame']
-    frame_file_name = str(frame_i).zfill(4) + '.tif'
-    frame_path = tiff_path / (data_set + "/" + frame_file_name)
-
-    # Get our resolutions (so we can map x-y coords to pixels)
-    if data_set not in resolutions:
-      with Image.open(str(frame_path)) as img:
-        resolutions[data_set] = img.info['resolution']
-
-    # this_frame = vsigmoid(cv2.imread(str(frame_path), cv2.IMREAD_GRAYSCALE), 255, 0.15, 60)
-    this_frame = cv2.imread(str(frame_path), cv2.IMREAD_GRAYSCALE)
-
-    if prev_frame is None:
-      prev_frame = this_frame
-      continue
-
-    # hsv = np.uint8(np.zeros((len(this_frame), len(this_frame[0]), 3)))
-    # hsv[...,1] = 255
-    flow = cv2.calcOpticalFlowFarneback(prev_frame, this_frame, None, 0.5, 6, 2, 3, 7, 1.5, 0)
-    # flow[...,0] = cv2.normalize(flow[...,0], None, 0, 255, cv2.NORM_MINMAX)
-    flow = flow[:,:,0]
-    # flow[] = cv2.normalize(flow[...,0], None, 0, 255, cv2.NORM_MINMAX)
-    # mag, ang = cv2.cartToPolar(flow[...,0], flow[...,1])
-    # hsv[...,0] = ang*180/np.pi/2
-    # hsv[...,2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
-
-    if data_set not in flow_frames:
-      flow_frames[data_set] = {}
-      raw_frames[data_set] = {}
-    flow_frames[data_set][frame_i] = flow#cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
-    raw_frames[data_set][frame_i] = this_frame
-
-    prev_frame = this_frame
-
 
   for event_id in event_ids:
     event_data = p_data.loc[( p_data['event_id'] == event_id), :]
@@ -280,9 +241,11 @@ def filter_events(p_data, conf):
       continue
 
     data_set = event_data['data_set'].iloc[0]
+    keep_event = False
+
     end_frame_i = np.max(event_data['frame'])
     prev_frame_i = np.min(event_data['frame'])-1
-    keep_event = False
+    prev_frame = None
 
     while(1):
       if event_data.loc[( event_data['frame'] > prev_frame_i ), 'frame'].count() <= 0:
@@ -290,30 +253,45 @@ def filter_events(p_data, conf):
 
       this_frame_i = np.min(event_data.loc[( event_data['frame'] > prev_frame_i ), 'frame'])
 
-      if this_frame_i not in flow_frames[data_set]:
-        prev_frame_i = this_frame_i
-        continue
+      this_frame_file_name = str(this_frame_i).zfill(4) + '.tif'
+      this_frame_path = tiff_path / (data_set + "/" + this_frame_file_name)
 
-      flow_frame = flow_frames[data_set][this_frame_i]
+      # Get our resolutions (so we can map x-y coords to pixels)
+      if data_set not in resolutions:
+        with Image.open(str(this_frame_path)) as img:
+          resolutions[data_set] = img.info['resolution']
+
+      this_frame = cv2.imread(str(this_frame_path), cv2.IMREAD_GRAYSCALE)
 
       x = int(round(event_data.loc[( event_data['frame'] == this_frame_i ), 'x'].iloc[0]*resolutions[data_set][0]))
       y = int(round(event_data.loc[( event_data['frame'] == this_frame_i ), 'y'].iloc[0]*resolutions[data_set][1]))
+
+      this_frame = hatchvid.crop_frame(this_frame, x, y, conf['cell_video_width'], conf['cell_video_height'], is_color=False)
       
-      flow_frame = hatchvid.crop_frame(flow_frame, x, y, conf['cell_video_width'], conf['cell_video_height'], is_color=False)
-      raw_frame = hatchvid.crop_frame(raw_frames[data_set][this_frame_i], x, y, conf['cell_video_width'], conf['cell_video_height'], is_color=False)
+      if prev_frame is None:
+        prev_frame_i = this_frame_i
+        prev_frame = this_frame
+        continue
 
-      # print(p_data['particle_id'].iloc[0], event_id, this_frame_i, flow_frame.sum(), this_frame.sum()/prev_frame.sum())
-      print(", ".join([ str(p_data['particle_id'].iloc[0]), str(event_id), str(this_frame_i), str(flow_frame.sum()), str(np.max(flow_frame)), str(np.mean(flow_frame)) ] ))
-      # print(vsigmoid(this_frame, 255, 1, 60).sum()/vsigmoid(prev_frame, 255, 1, 60).sum())
-      cv2.imshow('flow', flow_frame)
-      cv2.imshow('raw', raw_frame)
-      c = cv2.waitKey(0)
-      if 'q' == chr(c & 255):
-        exit()
-
-      if this_frame.sum()/prev_frame.sum() <= conf['optical_event_cutoff']:
+      transform = cv2.estimateRigidTransform(prev_frame, this_frame, False)
+      if transform is None:
         keep_event = True
-        break
+        prev_frame_i = this_frame_i
+        prev_frame = this_frame
+        continue
+        # break
+
+      # total_scale = abs(transform[0][2]) + abs(transform[1][2])
+      # if total_scale > conf['optical_event_cutoff']:
+      #   keep_event = True
+      #   break
+      print(", ".join([ str(p_data['particle_id'].iloc[0]), str(event_id), str(this_frame_i), str(transform[0][0]), str(transform[0][1]), str(transform[0][2]), str(transform[1][2]) ] ))
+      # print(vsigmoid(this_frame, 255, 1, 60).sum()/vsigmoid(prev_frame, 255, 1, 60).sum())
+      # cv2.imshow('prev', prev_frame)
+      # cv2.imshow('this', this_frame)
+      # c = cv2.waitKey(0)
+      # if 'q' == chr(c & 255):
+      #   exit()
 
       prev_frame_i = this_frame_i
       prev_frame = this_frame
@@ -325,10 +303,10 @@ def filter_events(p_data, conf):
   #   if 'E' not in event['event'].unique():
   #     to_remove.append(event_id)
 
-  # to_remove = list(set(to_remove))
+  to_remove = list(set(to_remove))
 
-  # p_data.loc[(p_data['event_id'].isin(to_remove)),'event'] = 'N'
-  # p_data.loc[(p_data['event_id'].isin(to_remove)),'event_id'] = -1
+  p_data.loc[(p_data['event_id'].isin(to_remove)),'event'] = 'N'
+  p_data.loc[(p_data['event_id'].isin(to_remove)),'event_id'] = -1
 
   return p_data
 
@@ -470,12 +448,11 @@ def apply_parallel(grouped, fn, *args):
   return pd.concat(rs.get(), sort=False)
 
 if __name__ == '__main__':
-  print(", ".join([ "particle_id", "event_id", "frame", "flow_sum", "flow_max", "flow_mean" ] ))
+  print(", ".join([ "particle_id", "event_id", "frame", "a", "b", "c", "d" ] ))
   groups = data.groupby([ 'data_set', 'particle_id' ])
   results = []
   for name, group in groups:
-    if name[1] not in [ '050', '012' ]:
-    # if name[1] not in [ '050', '060', '063', '090' ]:
+    if name[1] not in [ '025', '060', '063', '090' ]:
     # if name[1] not in [ '001', '012', '022', '028', '034', '096', '111', '112' ]:
       continue
     res = classify_particle_events(group.copy())
@@ -499,5 +476,3 @@ if not skip_graphs:
     "--img-dir=" + str(tiff_path)
   ]
   subprocess.call(cmd)
-
-s
