@@ -70,7 +70,7 @@ input_path = (ROOT_PATH / (arguments['INPUT'])).resolve()
 output_path = (ROOT_PATH / (arguments['OUTPUT'])).resolve()
 data_file_path = input_path / (arguments['--input-name']) if arguments['--input-name'] else input_path / "data.csv"
 tiff_path = input_path / (arguments['--img-dir']) if arguments['--img-dir'] else (input_path / ("../images/")).resolve()
-output_name = arguments['--outpuit-name'] if arguments['--output-name'] else "results.csv"
+output_name = arguments['--output-name'] if arguments['--output-name'] else "results.csv"
 skip_graphs = True if arguments['--skip-graphs'] else False
 max_processes = int(arguments['--max-processes']) if arguments['--max-processes'] else cpu_count()
 

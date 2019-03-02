@@ -40,6 +40,12 @@ import re
 from PIL import Image
 import common.video as hatchvid
 
+### Constant
+FONT           = cv2.FONT_HERSHEY_PLAIN
+FONT_SCALE     = 1
+FONT_COLOR     = (255,255,255)
+FONT_LINE_TYPE = 1
+
 ### Arguments and inputs
 arguments = docopt(__doc__, version=get_version())
 
@@ -68,7 +74,7 @@ data = pd.read_csv(csv_path, header=0, dtype={ 'particle_id': str })
 p_filter = ( (data['data_set'] == data_set) & (data['particle_id'] == particle_id) )
 
 p_data = data[p_filter]
-p_data = p_data[[ 'frame', 'x', 'y' ]]
+p_data = p_data[[ 'frame', 'time', 'x', 'y' ]]
 p_data.sort_values('frame')
 
 ### Initiate our video writer
@@ -109,13 +115,14 @@ while(this_frame_i <= end_frame_i):
   coords_filter = p_data['frame'] == this_frame_i
   coords = p_data[coords_filter]
 
-  if coords['frame'].count() <= 0: # We're missing a frame
-    frame = zero_frame
-  else:
-    frame_file_name = str(this_frame_i).zfill(4) + '.tif'
-    frame_path = str((images_path / (data_set + "/" + frame_file_name)).resolve())
+  frame_file_name = str(this_frame_i).zfill(4) + '.tif'
+  frame_path = (images_path / (data_set + "/" + frame_file_name)).resolve()
 
-    raw_frame = cv2.imread(frame_path, cv2.IMREAD_GRAYSCALE)
+  if coords['frame'].count() <= 0 or not frame_path.exists(): # We're missing a frame
+    frame = zero_frame
+    time_label = ""
+  else:
+    raw_frame = cv2.imread(str(frame_path), cv2.IMREAD_GRAYSCALE)
 
     x = int(round(coords['x'].iloc[0]*x_conversion))
     y = int(round(coords['y'].iloc[0]*y_conversion))
@@ -127,8 +134,16 @@ while(this_frame_i <= end_frame_i):
     frame = cv2.resize(frame, None, fx=scale_factor, fy=scale_factor, interpolation=cv2.INTER_CUBIC)
     frame = frame.astype('uint8')
 
+    # Make frame text
+    hours = math.floor(coords['time'].iloc[0] / 3600)
+    minutes = math.floor((coords['time'].iloc[0] - (hours*3600)) / 60)
+    seconds = math.floor((coords['time'].iloc[0] - (hours*3600)) % 60)
+
+    time_label = "{:02d}h{:02d}'{:02d}\" ({:d})".format(hours, minutes, seconds, this_frame_i)
+
   # Make the frame color
   frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+  cv2.putText(frame, time_label, (10, 20), FONT, FONT_SCALE, FONT_COLOR, FONT_LINE_TYPE)
 
   if graph_path:
     frame = append_graph(frame, graph, this_frame_i, start_frame_i, end_frame_i)

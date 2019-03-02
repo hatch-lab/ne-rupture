@@ -4,14 +4,14 @@
 Calculates scores for a given classifier
 
 Usage:
-  validate.py CLASSIFIER [--img-dir=dir] [--test-data-file=validate/validation-data/validation-data.csv] [--classifier-conf=0] [--simple-output=0] [--max-processes=4]
+  validate.py CLASSIFIER [--img-dir=dir] [--test-data-folder=validate/validation-data/input/] [--classifier-conf=0] [--simple-output=0] [--max-processes=4]
 
 Arguments:
   CLASSIFIER The name of the classifier to test
 
 Options:
   --img-dir=<string|None> [defaults: None] The directory that contains TIFF images of each frame, for outputting videos.
-  --test-data-file=<string> [defaults: validation-data.csv] The CSV file containing particle data with true events
+  --test-data-folder=<string> [defaults: validate/validation-data/input] The directory with the CSV file containing particle data with true events
   --classifier-conf=<string> [defaults: None] Will be passed along to the classifier.
   --simple-output=<int> [defaults: False] If simple, machine-readable output is desired.
   --max-processes=<int> [defaults: 4] The number of threads we will allow the classifier to use.
@@ -82,9 +82,9 @@ classifier = re.sub(r'[^a-zA-Z0-9\-\_\.\+]', '', arguments['CLASSIFIER'])
 if classifier != arguments['CLASSIFIER']:
   _print(simple_output, colorize("yellow", "Classifier input has been sanitized to " + classifier))
 
-data_file_path = Path(arguments['--test-data-file']).resolve() if arguments['--test-data-file'] else Path("validate/validation-data/validation-data.csv").resolve()
+data_file_path = Path(arguments['--test-data-folder']).resolve() if arguments['--test-data-folder'] else Path("validate/validation-data/input/").resolve()
 if not data_file_path.exists():
-  _print(simple_output, colorize("red", "Data file input cannot be found: \033[1m" + str(data_file_path) + "\033[0m"))
+  _print(simple_output, colorize("red", "Data folder input cannot be found: \033[1m" + str(data_file_path) + "\033[0m"))
   exit(1)
 
 tiff_path = Path(arguments['--img-dir']).resolve() if arguments['--img-dir'] else False
@@ -245,20 +245,6 @@ def apply_parallel(grouped, fn, *args):
 if __name__ == '__main__':
   _print(simple_output, "Scoring classifier \033[1m" + classifier + "\033[0m...")
   test_results = apply_parallel(data.groupby([ 'data_set', 'particle_id' ]), score_sequence)
-
-if tiff_path:
-  cmd = [
-    "python",
-    str(QA_PATH),
-    classifier,
-    str(results_file_path),
-    str(output_path),
-    "--img-dir=" + tiff_path
-  ]
-  if simple_output:
-    subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-  else:
-    subprocess.call(cmd)
 
 _print(simple_output, "")
 if simple_output:
