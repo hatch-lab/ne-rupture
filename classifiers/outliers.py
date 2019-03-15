@@ -45,14 +45,11 @@ import math
 import numpy as np
 import pandas as pd
 import csv
-import cv2
 import json
 from scipy.stats import iqr
 from multiprocessing import Pool, cpu_count
 import subprocess
 from time import sleep
-from PIL import Image
-import common.video as hatchvid
 
 arguments = docopt(__doc__, version=get_version())
 
