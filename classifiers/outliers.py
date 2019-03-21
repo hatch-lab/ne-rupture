@@ -73,7 +73,7 @@ max_processes = int(arguments['--max-processes']) if arguments['--max-processes'
 
 
 ### Read our data
-data = pd.read_csv(str(data_file_path), header=0, dtype={ 'particle_id': str })
+DATA = pd.read_csv(str(data_file_path), header=0, dtype={ 'particle_id': str })
 
 def classify_particle_events(p_data, convergence_limit = 3E-6):
   """
@@ -213,7 +213,113 @@ def extend_events(p_data, conf):
 
 def classify_events(p_data, conf):
   # Identify mitotic events
+  p_data = classify_mitotic_events(p_data, conf)
+
+  # Identify rupture events
+  p_data = classify_rupture_events(p_data, conf)
+
+  # Identify cases that are too hard to call
+  p_data = classify_unknown_events(p_data, conf)
+
+  return p_data
+
+def classify_mitotic_events(p_data, conf):
+  # Find events where the end of the event coincides with the first-time
+  # appearance of another cell nearby
+
+  event_ids = p_data.loc[(p_data['event_id'] != -1), 'event_id'].unique()
+  for event_id in event_ids:
+    # Get last 3 frames
+    event_frames = p_data.loc[(p_data['event_id'] == event_id),].sort_values('time')
+    end_frames = event_frames.tail(3)
+
+    data_set = end_frames['data_set'].iloc[0]
+    pid = end_frames['particle_id'].iloc[0]
+
+    # Find any particles nearby; we will use a bounding box instead
+    # of a circle to make calculations faster/easier
+    x_conversion = end_frames['x_conversion'].iloc[0]
+    y_conversion = end_frames['y_conversion'].iloc[0]
+    min_x = np.min(end_frames['x'])*x_conversion-conf['mitosis']['search_radius']
+    max_x = np.max(end_frames['x'])*x_conversion+conf['mitosis']['search_radius']
+    min_y = np.min(end_frames['y'])*y_conversion-conf['mitosis']['search_radius']
+    max_y = np.max(end_frames['y'])*y_conversion+conf['mitosis']['search_radius']
+
+    min_time = np.min(end_frames['time'])
+    max_time = np.max(end_frames['time'])+conf['mitosis']['time_radius']
+
+    neighbors = DATA.loc[( 
+      (DATA['data_set'] == data_set) & 
+      (DATA['particle_id'] != pid) & 
+      (DATA['x'] >= min_x) &
+      (DATA['x'] <= max_x) &
+      (DATA['y'] >= min_y) &
+      (DATA['y'] <= max_y) &
+      (DATA['time'] >= min_time) &
+      (DATA['time'] <= max_time)
+    ),[ 'data_set', 'particle_id' ]]
+
+    # The first appearance of a neighbor needs to be within a temporal
+    # bounding box
+    for index,neighbor in neighbors.iterrows():
+      min_appearance_window = max_time - conf['mitosis']['time_radius']
+      max_appearance_window = max_time
+
+      times = DATA.loc[( 
+        (DATA['data_set'] == neighbor['data_set']) & 
+        (DATA['particle_id'] == neighbor['particle_id']) 
+      ), 'time']
+
+      first_appearance = np.min(times)
+
+      if first_appearance >= min_appearance_window and first_appearance <= max_appearance_window:
+        # Mitosis event!
+        p_data.loc[(p_data['event_id'] == event_id), 'event'] = 'M'
+        # print("M", event_id, neighbor['particle_id'], first_appearance, min_appearance_window)
+        break
+
+  return p_data
+
+def classify_rupture_events(p_data, conf):
   p_data.loc[(p_data['event'] == '?'), 'event'] = 'R'
+
+  return p_data
+
+def classify_unknown_events(p_data, conf):
+  event_ids = p_data.loc[(p_data['event_id'] != -1), 'event_id'].unique()
+  for event_id in event_ids:
+    # Get last 3 frames
+    event_frames = p_data.loc[(p_data['event_id'] == event_id),].sort_values('time')
+
+    data_set = event_frames['data_set'].iloc[0]
+    pid = event_frames['particle_id'].iloc[0]
+
+    # Find any particles nearby; we will use a bounding box instead
+    # of a circle to make calculations faster/easier
+    x_conversion = event_frames['x_conversion'].iloc[0]
+    y_conversion = event_frames['y_conversion'].iloc[0]
+    min_x = np.min(event_frames['x'])*x_conversion-conf['unknown']['search_radius']
+    max_x = np.max(event_frames['x'])*x_conversion+conf['unknown']['search_radius']
+    min_y = np.min(event_frames['y'])*y_conversion-conf['unknown']['search_radius']
+    max_y = np.max(event_frames['y'])*y_conversion+conf['unknown']['search_radius']
+
+    min_time = np.min(event_frames['time'])-conf['unknown']['time_radius']
+    max_time = np.min(event_frames['time'])
+
+    neighbors = DATA.loc[( 
+      (DATA['data_set'] == data_set) & 
+      (DATA['particle_id'] != pid) & 
+      (DATA['x'] >= min_x) &
+      (DATA['x'] <= max_x) &
+      (DATA['y'] >= min_y) &
+      (DATA['y'] <= max_y) &
+      (DATA['time'] >= min_time) &
+      (DATA['time'] <= max_time)
+    ),[ 'data_set', 'particle_id' ]]
+
+    # If we have neighbors during an event, just ignore it
+    if len(neighbors) > 0:
+      p_data.loc[(p_data['event_id'] == event_id), 'event'] = '?'
 
   return p_data
 
@@ -230,9 +336,12 @@ def filter_events(p_data, conf):
   """
   to_remove = []
 
-  #   # Remove ruptures for which there are no repair events
-  #   if 'E' not in event['event'].unique():
-  #     to_remove.append(event_id)
+  event_ids = p_data.loc[(p_data['event'] == "R"), 'event_id'].unique()
+  for event_id in event_ids:
+    events = p_data.loc[(p_data['event_id']) == event_id, 'event'].unique()
+    # Remove ruptures for which there are no repair events
+    if 'E' not in events:
+      to_remove.append(event_id)
 
   to_remove = list(set(to_remove))
 
@@ -361,23 +470,22 @@ def apply_parallel(grouped, fn, *args):
   return pd.concat(rs.get(), sort=False)
 
 if __name__ == '__main__':
-  # print(", ".join([ "particle_id", "event_id", "frame", "a", "b", "c", "d" ] ))
-  # groups = data.groupby([ 'data_set', 'particle_id' ])
+  # groups = DATA.groupby([ 'data_set', 'particle_id' ])
   # results = []
   # for name, group in groups:
-  #   if name[1] not in [ '025', '060', '063', '090' ]:
+  #   if name[1] not in [ '050' ]:
   #   # if name[1] not in [ '001', '012', '022', '028', '034', '096', '111', '112' ]:
   #     continue
   #   res = classify_particle_events(group.copy())
   #   results.append(res)
-  # exit()
+  #   exit()
 
-  # data = pd.concat(results)
-  data = apply_parallel(data.groupby([ 'data_set', 'particle_id' ]), classify_particle_events)
+  # classified_data = pd.concat(results)
+  classified_data = apply_parallel(DATA.groupby([ 'data_set', 'particle_id' ]), classify_particle_events)
 
 output_path.mkdir(exist_ok=True)
 output_file_path = (output_path / (output_name)).resolve()
-data.to_csv(str(output_file_path), header=True, encoding='utf-8', index=None)
+classified_data.to_csv(str(output_file_path), header=True, encoding='utf-8', index=None)
 
 if not skip_graphs:
   cmd = [

@@ -14,5 +14,15 @@
 
   "recoveries": {
     "R": "E"
+  },
+
+  "mitosis": {
+    "search_radius": 60,
+    "time_radius": 600
+  },
+
+  "unknown": {
+    "search_radius": 45,
+    "time_radius": 600
   }
 }
