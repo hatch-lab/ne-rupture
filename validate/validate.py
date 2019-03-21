@@ -4,13 +4,12 @@
 Calculates scores for a given classifier
 
 Usage:
-  validate.py CLASSIFIER [--img-dir=dir] [--test-data-folder=validate/validation-data/input/] [--classifier-conf=0] [--simple-output=0] [--max-processes=4]
+  validate.py CLASSIFIER [--test-data-folder=validate/validation-data/input/] [--classifier-conf=0] [--simple-output=0] [--max-processes=4]
 
 Arguments:
   CLASSIFIER The name of the classifier to test
 
 Options:
-  --img-dir=<string|None> [defaults: None] The directory that contains TIFF images of each frame, for outputting videos.
   --test-data-folder=<string> [defaults: validate/validation-data/input] The directory with the CSV file containing particle data with true events
   --classifier-conf=<string> [defaults: None] Will be passed along to the classifier.
   --simple-output=<int> [defaults: False] If simple, machine-readable output is desired.
@@ -86,13 +85,6 @@ data_file_path = Path(arguments['--test-data-folder']).resolve() if arguments['-
 if not data_file_path.exists():
   _print(simple_output, colorize("red", "Data folder input cannot be found: \033[1m" + str(data_file_path) + "\033[0m"))
   exit(1)
-
-tiff_path = Path(arguments['--img-dir']).resolve() if arguments['--img-dir'] else False
-if tiff_path and not tiff_path.is_dir():
-  _print(simple_output, colorize("red", "The supplied img-dir does not exist: \033[1m" + str(tiff_path) + "\033[0m"))
-  exit(1)
-elif tiff_path:
-  tiff_path = str(tiff_path)
 
 classifier_conf = arguments['--classifier-conf'] if arguments['--classifier-conf'] else "0"
 
