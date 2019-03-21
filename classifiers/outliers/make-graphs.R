@@ -59,10 +59,11 @@ classifier_conf <- fromJSON(raw_conf)
 # Returns the event type, start, end, and the associated color.
 #
 # @param DataFrame df
-# @param string column The event column to use
+# @param string event_id_column The event id column to use
+# @param string event_column The event column to use
 # @returns DataFrame
 ##
-get_event_groups <- function(df, column) {
+get_event_groups <- function(df, event_id_column="event_id", event_column="event") {
   groups <- data.frame(
     event = character(),
     start = as.numeric(character()),
@@ -77,16 +78,16 @@ get_event_groups <- function(df, column) {
     "N"="#ffffff",
     "R"="#ffcccc",
     "E"="#ccffcc",
-    "X"="#cccccc",
+    "X"="#e6e6fa",
     "M"="#ccccff",
-    "?"="#ffcccc"
+    "?"="#eeeeee"
   )
 
-  event_ids <- unique(df[,c("event_id", column)])
+  event_ids <- unique(df[,c(event_id_column, event_column)])
   for(i in 1:nrow(event_ids)) {
-    event_id <- event_ids$event_id[[i]]
-    event <- event_ids[[column]][[i]]
-    event_idx <- which(df$event_id == event_id & df[[column]] == event)
+    event_id <- event_ids[[event_id_column]][[i]]
+    event <- event_ids[[event_column]][[i]]
+    event_idx <- which(df[[event_id_column]] == event_id & df[[event_column]] == event)
 
     start <- min(df$time[event_idx])
     end <- max(df$time[event_idx])
@@ -150,9 +151,9 @@ for(m in 1:length(data_sets)) {
     base_plot <- ggplot(df, aes(x=time, y=normalized_median))
     
     # Annotate the plot with predicted and true events
-    pred_groups <- get_event_groups(df, "event")
+    pred_groups <- get_event_groups(df, "event_id", "event")
     if(have_true_events) {
-      true_groups <- get_event_groups(df, "true_event") 
+      true_groups <- get_event_groups(df, "true_event_id", "true_event") 
     } else {
       true_groups <- list()
     }
@@ -240,7 +241,7 @@ for(m in 1:length(data_sets)) {
       }
       color <- "#ffffff"
       start <- pred_groups$frame_start[[i]]
-      end <- pred_groups$frame_end[[i]]
+      end <- pred_groups$frame_end[[i]]+1
       
       if(have_true_events) {
         movie_plot <- movie_plot + 
@@ -257,7 +258,7 @@ for(m in 1:length(data_sets)) {
         }
         color <- "#ffffff"
         start <- true_groups$frame_start[[i]]
-        end <- true_groups$frame_end[[i]]
+        end <- true_groups$frame_end[[i]]+1
         
         movie_plot <- movie_plot + 
           annotate(geom="rect", xmin=start, xmax=end, ymin=-Inf, ymax=0, fill=color, alpha=0.2)
