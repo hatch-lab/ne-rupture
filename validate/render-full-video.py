@@ -31,7 +31,6 @@ import csv
 import cv2
 import math
 import re
-from PIL import Image
 
 ### Constant
 FONT           = cv2.FONT_HERSHEY_COMPLEX_SMALL
@@ -71,7 +70,7 @@ output_path = Path(arguments['OUTPUT_DIR']).resolve()
 ### Get our data
 data = pd.read_csv(str(csv_path), header=0, dtype={ 'particle_id': str })
 
-data = data[[ 'particle_id', 'frame', 'x', 'y', 'event' ]]
+data = data[[ 'particle_id', 'frame', 'x', 'y', 'x_conversion', 'y_conversion', 'event' ]]
 data.sort_values('frame')
 
 
@@ -82,12 +81,6 @@ raw_frame = cv2.imread(str(frame_path), cv2.IMREAD_GRAYSCALE)
 
 width = raw_frame.shape[1]
 height = raw_frame.shape[0]
-
-# Get our resolution (so we can map x-y coords to pixels)
-with Image.open(frame_path) as img:
-  resolution = img.info['resolution']
-  x_conversion = resolution[0]
-  y_conversion = resolution[1]
 
 # Create a blank frame in case we have missing frames
 zero_frame = np.zeros(( height, width ))
@@ -126,12 +119,12 @@ while(this_frame_i <= end_frame_i):
 
     for index, row in frame_data.iterrows():
       particle_id = row['particle_id']
-      x = int(round(row['x']*x_conversion))
-      y = int(round(row['y']*y_conversion))
+      x = int(round(row['x']*row['x_conversion']))
+      y = int(round(row['y']*row['y_conversion']))
       event = row['event']
 
       # Add particle_id
-      adj_circle_radius = int(round(CIRCLE_RADIUS/x_conversion))
+      adj_circle_radius = int(round(CIRCLE_RADIUS/row['x_conversion']))
       cv2.circle(frame, (x, y), adj_circle_radius, CIRCLE_COLORS[event], CIRCLE_THICKNESS[event], CIRCLE_LINE_TYPE)
       cv2.putText(frame, particle_id, (x, y), FONT, FONT_SCALE, FONT_COLOR, FONT_LINE_TYPE)
 

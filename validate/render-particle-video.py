@@ -37,7 +37,6 @@ import csv
 import cv2
 import math
 import re
-from PIL import Image
 import common.video as hatchvid
 
 ### Constant
@@ -74,7 +73,7 @@ data = pd.read_csv(csv_path, header=0, dtype={ 'particle_id': str })
 p_filter = ( (data['data_set'] == data_set) & (data['particle_id'] == particle_id) )
 
 p_data = data[p_filter]
-p_data = p_data[[ 'frame', 'time', 'x', 'y' ]]
+p_data = p_data[[ 'frame', 'time', 'x', 'y', 'x_conversion', 'y_conversion' ]]
 p_data.sort_values('frame')
 
 ### Initiate our video writer
@@ -104,10 +103,6 @@ this_frame_i = start_frame_i
 # Get our resolution (so we can map x-y coords to pixels)
 frame_file_name = str(this_frame_i).zfill(4) + '.tif'
 frame_path = str((images_path / (data_set + "/" + frame_file_name)).resolve())
-with Image.open(frame_path) as img:
-  resolution = img.info['resolution']
-  x_conversion = resolution[0]
-  y_conversion = resolution[1]
 
 ### Loop through and build our movie
 print("  Building movie for \033[1m" + data_set + ":" + particle_id + "\033[0m")
@@ -124,8 +119,8 @@ while(this_frame_i <= end_frame_i):
   else:
     raw_frame = cv2.imread(str(frame_path), cv2.IMREAD_GRAYSCALE)
 
-    x = int(round(coords['x'].iloc[0]*x_conversion))
-    y = int(round(coords['y'].iloc[0]*y_conversion))
+    x = int(round(coords['x'].iloc[0]*coords['x_conversion'].iloc[0]))
+    y = int(round(coords['y'].iloc[0]*coords['y_conversion'].iloc[0]))
 
     # Crop down to just this particle
     frame = hatchvid.crop_frame(raw_frame, x, y, width, height)

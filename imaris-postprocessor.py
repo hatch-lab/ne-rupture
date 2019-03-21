@@ -13,6 +13,7 @@ Arguments:
 
 Options:
   --data_set=<string|0> The universally unique ID to identify this data set. If falsey, defaults to generated UUID.
+  --img-dir=<string> [defaults: INPUT/../images] The directory that contains TIFF images of each frame, for outputting videos.
   --frame-rate=<int> [defaults: 180] The seconds that elapse between frames
 
 Output:
@@ -32,14 +33,16 @@ import uuid
 from errors.UnexpectedEOFException import UnexpectedEOFException
 from scipy import interpolate
 from statsmodels.tsa.stattools import kpss
+from PIL import Image
 
 """
 Arguments and inputs
 """
 arguments = docopt(__doc__, version=get_version())
 
-input_dir = arguments['INPUT_DIR']
-output_dir = arguments['OUTPUT_DIR']
+input_path = Path(arguments['INPUT_DIR']).resolve()
+output_path = Path(arguments['OUTPUT_DIR']).resolve()
+tiff_path = input_dir / (arguments['--img-dir']) if arguments['--img-dir'] else (input_dir / ("../images/")).resolve()
 frame_rate = int(arguments['--frame-rate']) if arguments['--frame-rate'] else 180
 gid = arguments['--data-set'] if arguments['--data-set'] else str(uuid.uuid4())
 
@@ -106,18 +109,12 @@ COL_MAP = {
   'Ellipticity (oblate)': 'oblate_ellipticity'
 }
 
-"""
-Constant for getting our base input dir
-"""
-INPUT_PATH = Path(input_dir).resolve()
-OUTPUT_PATH = Path(output_dir).resolve()
-
 
 ### Collect our data
 data = None
 
 for name,csv_info in data_files.items():
-  file_path = INPUT_PATH / csv_info['file']
+  file_path = input_path / csv_info['file']
   
   if not file_path.exists():
     print(colorize("yellow", str(file_path) + " not found; skipping"))
@@ -307,9 +304,21 @@ data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'y', 'y')
 data['particle_id'] = data['particle_id'].str.replace("1000000", "")
 
 
-### Write out the files
-OUTPUT_PATH.mkdir(mode=0o755, parents=True, exist_ok=True)
+### Get pixel to micron conversion factor
+frame_file_name = str(np.min(data['frame'])).zfill(4) + '.tif'
+frame_path = (tiff_path / (gid + "/" + frame_file_name)).resolve()
+with Image.open(frame_path) as img:
+  resolution = img.info['resolution']
+  x_conversion = resolution[0]
+  y_conversion = resolution[1]
 
-csv_path = OUTPUT_PATH / "data.csv"
+data['x_conversion'] = x_conversion
+data['y_conversion'] = y_conversion
+
+
+### Write out the files
+output_path.mkdir(mode=0o755, parents=True, exist_ok=True)
+
+csv_path = output_path / "data.csv"
 
 data.to_csv(str(csv_path), header=True, encoding='utf-8', index=None)
