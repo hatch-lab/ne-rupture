@@ -93,7 +93,7 @@ get_event_groups <- function(df, event_id_column="event_id", event_column="event
     end <- max(df$time[event_idx])
     frame_start <- min(df$frame[event_idx])
     frame_end <- max(df$frame[event_idx])
-    event_type <- unique(df[event_idx, c(column)])[[1]]
+    event_type <- unique(df[event_idx, c(event_column)])[[1]]
 
     groups[nrow(groups)+1,] <- c(event_type, start, end, frame_start, frame_end, colors[[event_type]])
   }
