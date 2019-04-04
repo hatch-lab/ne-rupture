@@ -5,14 +5,14 @@
 Takes Imaris output files and generates a combined dataframe with normalized and scaled values.
 
 Usage:
-  imaris-postprocessor.py INPUT_DIR OUTPUT_DIR [--frame-rate=180] [--data-set=GID]
+  imaris-postprocessor.py INPUT_DIR OUTPUT_DIR [--frame-rate=180] [--img-dir=None] [--data-set=None]
 
 Arguments:
   INPUT_DIR Path to Imaris data sheets
   OUTPUT_DIR Path to output predictions and videos (if selected)
 
 Options:
-  --data_set=<string|0> The universally unique ID to identify this data set. If falsey, defaults to generated UUID.
+  --data-set=<string> [defaults: Name of INPUT/../] The data set indicator
   --img-dir=<string> [defaults: INPUT/../images] The directory that contains TIFF images of each frame, for outputting videos.
   --frame-rate=<int> [defaults: 180] The seconds that elapse between frames
 
@@ -28,6 +28,7 @@ from common.version import get_version
 import numpy as np
 import pandas as pd
 import csv
+import cv2
 from pathlib import Path
 import uuid
 from errors.UnexpectedEOFException import UnexpectedEOFException
@@ -42,9 +43,9 @@ arguments = docopt(__doc__, version=get_version())
 
 input_path = Path(arguments['INPUT_DIR']).resolve()
 output_path = Path(arguments['OUTPUT_DIR']).resolve()
-tiff_path = input_dir / (arguments['--img-dir']) if arguments['--img-dir'] else (input_dir / ("../images/")).resolve()
+tiff_path = input_path / (arguments['--img-dir']) if arguments['--img-dir'] else (input_path / ("../images/")).resolve()
 frame_rate = int(arguments['--frame-rate']) if arguments['--frame-rate'] else 180
-gid = arguments['--data-set'] if arguments['--data-set'] else str(uuid.uuid4())
+gid = arguments['--data-set'] if arguments['--data-set'] else (input_path / "../").resolve().name
 
 def colorize(color, string):
   """
@@ -204,6 +205,20 @@ def sliding_average(data, window, step, frame_rate):
 data = data.groupby([ 'data_set', 'particle_id' ]).filter(lambda x: x['frame_rate'].iloc[0]*len(x) > 28800)
 
 
+### Direct image processing
+
+# Get pixel to micron conversion factor
+frame_idx = np.min(data['frame'])
+frame_file_name = str(frame_idx).zfill(4) + '.tif'
+frame_path = (tiff_path / (gid + "/" + frame_file_name)).resolve()
+with Image.open(frame_path) as img:
+  resolution = img.info['resolution']
+  x_conversion = resolution[0]
+  y_conversion = resolution[1]
+
+data['x_conversion'] = x_conversion
+data['y_conversion'] = y_conversion
+
 ### Normalize median intensity by average particle intensity/frame
 def normalize_intensity(group):
   """
@@ -302,18 +317,6 @@ data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'y', 'y')
 
 ### Make particle IDs less… long. This assumes we won't have more than 999 particles in a video.
 data['particle_id'] = data['particle_id'].str.replace("1000000", "")
-
-
-### Get pixel to micron conversion factor
-frame_file_name = str(np.min(data['frame'])).zfill(4) + '.tif'
-frame_path = (tiff_path / (gid + "/" + frame_file_name)).resolve()
-with Image.open(frame_path) as img:
-  resolution = img.info['resolution']
-  x_conversion = resolution[0]
-  y_conversion = resolution[1]
-
-data['x_conversion'] = x_conversion
-data['y_conversion'] = y_conversion
 
 
 ### Write out the files
