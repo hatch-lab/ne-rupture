@@ -212,8 +212,8 @@ for(m in 1:length(data_sets)) {
       annotate(geom="segment", x=-Inf, xend=Inf, y=baseline_median, yend=baseline_median, linetype="dashed", alpha=0.7)
     if(have_true_events) {
       median_plot <- median_plot +
-        annotate(geom="text", x=0.1, y=0.5, label="Predicted", alpha=0.8, hjust=0) +
-        annotate(geom="text", x=0.1, y=-0.2, label="True", alpha=0.8, hjust=0)
+        annotate(geom="text", x=0.1, y=max(df$stationary_median)+0.05, label="Predicted", alpha=0.8, hjust=0) +
+        annotate(geom="text", x=0.1, y=-1*(max(df$stationary_median)+0.05), label="True", alpha=0.8, hjust=0)
     }
 
     area_cutoff <- classifier_conf[['area_cutoff']]

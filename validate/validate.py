@@ -168,7 +168,13 @@ def score_sequence(p_data):
     ('X', 'N'): 0,
     ('X', 'R'): -2,
     ('X', 'E'): -2,
-    ('X', 'M'): -2
+    ('X', 'M'): -2,
+
+    ('?', 'N'): -2,
+    ('?', 'R'): -1,
+    ('?', 'E'): -1,
+    ('?', 'M'): 0,
+    ('?', 'X'): 0
   }
   alignments = pairwise2.align.globalds(true, pred, score_key, -1, -0.5)
   # perfect = pairwise2.align.globalds(true, true, score_key, -1, -0.5)
