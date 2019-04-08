@@ -334,7 +334,23 @@ def filter_events(p_data, conf):
   Returns
     Panda DataFrame The modified data frame
   """
-  to_remove = []
+
+  # Filter out frames where the median value of all cell events <= 110
+  if p_data.loc[((p_data['event_id'] != -1) & (p_data['median'] > 110)),'event_id'].count() <= 0:
+    p_data.loc[:,'event'] = 'N'
+    p_data.loc[:,'event_id'] = -1
+
+  to_remove = np.array([])
+
+  # Filter out frames where the median is 5*iqr above 0
+  median_data = p_data['stationary_median'].dropna()
+  area_data = p_data['stationary_area'].dropna()
+
+  idx = (
+    (p_data['stationary_median'] > 5*iqr(median_data)) |
+    (p_data['stationary_area'] < -5*iqr(area_data))
+  )
+  np.append(to_remove, p_data.loc[idx,'event_id'].unique())
 
   event_ids = p_data.loc[(p_data['event'] == "R"), 'event_id'].unique()
   for event_id in event_ids:
@@ -343,7 +359,7 @@ def filter_events(p_data, conf):
     if 'E' not in events:
       to_remove.append(event_id)
 
-  to_remove = list(set(to_remove))
+  to_remove = np.unique(to_remove).tolist()
 
   p_data.loc[(p_data['event_id'].isin(to_remove)),'event'] = 'N'
   p_data.loc[(p_data['event_id'].isin(to_remove)),'event_id'] = -1
