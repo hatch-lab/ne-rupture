@@ -2,6 +2,8 @@
   "median_cutoff": 2.2,
   "area_cutoff": 2.2,
 
+  "extreme_median_cutoff": -4.667758,
+
   "median_iqr_ratio_cutoff": 3,
   "area_iqr_ratio_cutoff": 3,
   

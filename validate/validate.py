@@ -117,7 +117,7 @@ except:
 ### Read our predicted data
 results_file_path = output_path / "results.csv"
 data = pd.read_csv(str(results_file_path), header=0, dtype={ 'particle_id': str })
-data = data[[ 'data_set', 'particle_id', 'time', 'event', 'true_event' ]]
+data = data[[ 'data_set', 'particle_id', 'time', 'filtered', 'event', 'true_event' ]]
 
 
 ### Score our data
@@ -231,7 +231,7 @@ def apply_parallel(grouped, fn, *args):
     for name, group in grouped:
       # We're going to skip sequences where true and pred
       # values are entirely N
-      if (group['event'][( group['event'] != 'N' )].count() <= 0) and (group['event'][( group['true_event'] != 'N' )].count() <= 0):
+      if (group['event'][( (group['event'] != 'N') & (group['filtered'] != 1) )].count() <= 0) and (group['event'][( (group['true_event'] != 'N') & (group['filtered'] != 1) )].count() <= 0):
         _print(simple_output, "  Skipping \033[1m" + group['data_set'].unique()[0] + ':' + group['particle_id'].unique()[0] + "\033[0m")
         continue
       t = tuple([ group ]) + tuple(args)

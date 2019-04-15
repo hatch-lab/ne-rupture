@@ -70,6 +70,7 @@ get_event_groups <- function(df, event_id_column="event_id", event_column="event
     end = as.numeric(character()),
     frame_start = as.integer(character()),
     frame_end = as.integer(character()),
+    filtered = as.logical(character()),
     color = character(),
     stringsAsFactors=F
   )
@@ -94,8 +95,9 @@ get_event_groups <- function(df, event_id_column="event_id", event_column="event
     frame_start <- min(df$frame[event_idx])
     frame_end <- max(df$frame[event_idx])
     event_type <- unique(df[event_idx, c(event_column)])[[1]]
+    filtered <- as.logical(unique(df$filtered[event_idx])[[1]])
 
-    groups[nrow(groups)+1,] <- c(event_type, start, end, frame_start, frame_end, colors[[event_type]])
+    groups[nrow(groups)+1,] <- c(event_type, start, end, frame_start, frame_end, filtered, colors[[event_type]])
   }
   
   groups$start <- as.numeric(groups$start)
@@ -162,8 +164,9 @@ for(m in 1:length(data_sets)) {
       start <- pred_groups$start[[i]]
       end <- pred_groups$end[[i]]
       event <- pred_groups$event[[i]]
+      filtered <- pred_groups$filtered[[i]]
       
-      if(event != "N") {
+      if(event != "N" && filtered != TRUE) {
         is_interesting <- T
       }
       
@@ -181,8 +184,9 @@ for(m in 1:length(data_sets)) {
         start <- true_groups$start[[i]]
         end <- true_groups$end[[i]]
         event <- true_groups$event[[i]]
+        filtered <- true_groups$filtered[[i]]
         
-        if(event != "N") {
+        if(event != "N" && filtered != TRUE) {
           is_interesting <- T
         }
         
@@ -212,8 +216,8 @@ for(m in 1:length(data_sets)) {
       annotate(geom="segment", x=-Inf, xend=Inf, y=baseline_median, yend=baseline_median, linetype="dashed", alpha=0.7)
     if(have_true_events) {
       median_plot <- median_plot +
-        annotate(geom="text", x=0.1, y=max(df$stationary_median)+0.05, label="Predicted", alpha=0.8, hjust=0) +
-        annotate(geom="text", x=0.1, y=-1*(max(df$stationary_median)+0.05), label="True", alpha=0.8, hjust=0)
+        annotate(geom="text", x=0.1, y=0.05, label="Predicted", alpha=0.8, hjust=0) +
+        annotate(geom="text", x=0.1, y=-0.05, label="True", alpha=0.8, hjust=0)
     }
 
     area_cutoff <- classifier_conf[['area_cutoff']]

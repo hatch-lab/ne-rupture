@@ -47,6 +47,7 @@ import pandas as pd
 import csv
 import json
 from scipy.stats import iqr
+from scipy import spatial
 from multiprocessing import Pool, cpu_count
 import subprocess
 from time import sleep
@@ -131,12 +132,16 @@ def seed_events(p_data, conf):
   median_data = p_data['stationary_median'].dropna()
   area_data = p_data['stationary_area'].dropna()
 
-  idx = (
+  idx1 = (
     (p_data['stationary_median'] < np.quantile(median_data, 0.25)-conf['median_cutoff']*iqr(median_data)) &
     (p_data['stationary_area'] > np.quantile(area_data, 0.75)+conf['area_cutoff']*iqr(area_data))
   )
 
-  p_data.loc[idx, 'event'] = '?'
+  idx2 = (
+    (p_data['stationary_median'] < conf['extreme_median_cutoff']*iqr(median_data)) 
+  )
+
+  p_data.loc[( idx1 | idx2 ), 'event'] = '?'
 
   return p_data
 
@@ -212,11 +217,11 @@ def extend_events(p_data, conf):
   return p_data
 
 def classify_events(p_data, conf):
-  # Identify mitotic events
-  p_data = classify_mitotic_events(p_data, conf)
-
   # Identify rupture events
   p_data = classify_rupture_events(p_data, conf)
+
+  # Identify mitotic events
+  p_data = classify_mitotic_events(p_data, conf)
 
   # Identify cases that are too hard to call
   p_data = classify_unknown_events(p_data, conf)
@@ -227,56 +232,56 @@ def classify_mitotic_events(p_data, conf):
   # Find events where the end of the event coincides with the first-time
   # appearance of another cell nearby
 
-  event_ids = p_data.loc[(p_data['event_id'] != -1), 'event_id'].unique()
-  for event_id in event_ids:
-    # Get last 3 frames
-    event_frames = p_data.loc[(p_data['event_id'] == event_id),].sort_values('time')
-    end_frames = event_frames.tail(3)
+  # event_ids = p_data.loc[(p_data['event_id'] != -1), 'event_id'].unique()
+  # for event_id in event_ids:
+  #   # Get last 3 frames
+  #   event_frames = p_data.loc[(p_data['event_id'] == event_id),].sort_values('time')
+  #   end_frames = event_frames.tail(3)
 
-    data_set = end_frames['data_set'].iloc[0]
-    pid = end_frames['particle_id'].iloc[0]
+  #   data_set = end_frames['data_set'].iloc[0]
+  #   pid = end_frames['particle_id'].iloc[0]
 
-    # Find any particles nearby; we will use a bounding box instead
-    # of a circle to make calculations faster/easier
-    x_conversion = end_frames['x_conversion'].iloc[0]
-    y_conversion = end_frames['y_conversion'].iloc[0]
-    min_x = np.min(end_frames['x'])*x_conversion-conf['mitosis']['search_radius']
-    max_x = np.max(end_frames['x'])*x_conversion+conf['mitosis']['search_radius']
-    min_y = np.min(end_frames['y'])*y_conversion-conf['mitosis']['search_radius']
-    max_y = np.max(end_frames['y'])*y_conversion+conf['mitosis']['search_radius']
+  #   # Find any particles nearby; we will use a bounding box instead
+  #   # of a circle to make calculations faster/easier
+  #   x_conversion = end_frames['x_conversion'].iloc[0]
+  #   y_conversion = end_frames['y_conversion'].iloc[0]
+  #   min_x = np.min(end_frames['x'])*x_conversion-conf['mitosis']['search_radius']
+  #   max_x = np.max(end_frames['x'])*x_conversion+conf['mitosis']['search_radius']
+  #   min_y = np.min(end_frames['y'])*y_conversion-conf['mitosis']['search_radius']
+  #   max_y = np.max(end_frames['y'])*y_conversion+conf['mitosis']['search_radius']
 
-    min_time = np.min(end_frames['time'])
-    max_time = np.max(end_frames['time'])+conf['mitosis']['time_radius']
+  #   min_time = np.min(end_frames['time'])
+  #   max_time = np.max(end_frames['time'])+conf['mitosis']['time_radius']
 
-    neighbors = DATA.loc[( 
-      (DATA['data_set'] == data_set) & 
-      (DATA['particle_id'] != pid) & 
-      (DATA['x'] >= min_x) &
-      (DATA['x'] <= max_x) &
-      (DATA['y'] >= min_y) &
-      (DATA['y'] <= max_y) &
-      (DATA['time'] >= min_time) &
-      (DATA['time'] <= max_time)
-    ),[ 'data_set', 'particle_id' ]]
+  #   neighbors = DATA.loc[( 
+  #     (DATA['data_set'] == data_set) & 
+  #     (DATA['particle_id'] != pid) & 
+  #     (DATA['x'] >= min_x) &
+  #     (DATA['x'] <= max_x) &
+  #     (DATA['y'] >= min_y) &
+  #     (DATA['y'] <= max_y) &
+  #     (DATA['time'] >= min_time) &
+  #     (DATA['time'] <= max_time)
+  #   ),[ 'data_set', 'particle_id' ]]
 
-    # The first appearance of a neighbor needs to be within a temporal
-    # bounding box
-    for index,neighbor in neighbors.iterrows():
-      min_appearance_window = max_time - conf['mitosis']['time_radius']
-      max_appearance_window = max_time
+  #   # The first appearance of a neighbor needs to be within a temporal
+  #   # bounding box
+  #   for index,neighbor in neighbors.iterrows():
+  #     min_appearance_window = max_time - conf['mitosis']['time_radius']
+  #     max_appearance_window = max_time
 
-      times = DATA.loc[( 
-        (DATA['data_set'] == neighbor['data_set']) & 
-        (DATA['particle_id'] == neighbor['particle_id']) 
-      ), 'time']
+  #     times = DATA.loc[( 
+  #       (DATA['data_set'] == neighbor['data_set']) & 
+  #       (DATA['particle_id'] == neighbor['particle_id']) 
+  #     ), 'time']
 
-      first_appearance = np.min(times)
+  #     first_appearance = np.min(times)
 
-      if first_appearance >= min_appearance_window and first_appearance <= max_appearance_window:
-        # Mitosis event!
-        p_data.loc[(p_data['event_id'] == event_id), 'event'] = 'M'
-        # print("M", event_id, neighbor['particle_id'], first_appearance, min_appearance_window)
-        break
+  #     if first_appearance >= min_appearance_window and first_appearance <= max_appearance_window:
+  #       # Mitosis event!
+  #       p_data.loc[(p_data['event_id'] == event_id), 'event'] = 'M'
+  #       # print("M", event_id, neighbor['particle_id'], first_appearance, min_appearance_window)
+  #       break
 
   return p_data
 
@@ -286,40 +291,40 @@ def classify_rupture_events(p_data, conf):
   return p_data
 
 def classify_unknown_events(p_data, conf):
-  event_ids = p_data.loc[(p_data['event_id'] != -1), 'event_id'].unique()
-  for event_id in event_ids:
-    # Get last 3 frames
-    event_frames = p_data.loc[(p_data['event_id'] == event_id),].sort_values('time')
+  # event_ids = p_data.loc[(p_data['event_id'] != -1), 'event_id'].unique()
+  # for event_id in event_ids:
+  #   # Get last 3 frames
+  #   event_frames = p_data.loc[(p_data['event_id'] == event_id),].sort_values('time')
 
-    data_set = event_frames['data_set'].iloc[0]
-    pid = event_frames['particle_id'].iloc[0]
+  #   data_set = event_frames['data_set'].iloc[0]
+  #   pid = event_frames['particle_id'].iloc[0]
 
-    # Find any particles nearby; we will use a bounding box instead
-    # of a circle to make calculations faster/easier
-    x_conversion = event_frames['x_conversion'].iloc[0]
-    y_conversion = event_frames['y_conversion'].iloc[0]
-    min_x = np.min(event_frames['x'])*x_conversion-conf['unknown']['search_radius']
-    max_x = np.max(event_frames['x'])*x_conversion+conf['unknown']['search_radius']
-    min_y = np.min(event_frames['y'])*y_conversion-conf['unknown']['search_radius']
-    max_y = np.max(event_frames['y'])*y_conversion+conf['unknown']['search_radius']
+  #   # Find any particles nearby; we will use a bounding box instead
+  #   # of a circle to make calculations faster/easier
+  #   x_conversion = event_frames['x_conversion'].iloc[0]
+  #   y_conversion = event_frames['y_conversion'].iloc[0]
+  #   min_x = np.min(event_frames['x'])*x_conversion-conf['unknown']['search_radius']
+  #   max_x = np.max(event_frames['x'])*x_conversion+conf['unknown']['search_radius']
+  #   min_y = np.min(event_frames['y'])*y_conversion-conf['unknown']['search_radius']
+  #   max_y = np.max(event_frames['y'])*y_conversion+conf['unknown']['search_radius']
 
-    min_time = np.min(event_frames['time'])-conf['unknown']['time_radius']
-    max_time = np.min(event_frames['time'])
+  #   min_time = np.min(event_frames['time'])-conf['unknown']['time_radius']
+  #   max_time = np.min(event_frames['time'])
 
-    neighbors = DATA.loc[( 
-      (DATA['data_set'] == data_set) & 
-      (DATA['particle_id'] != pid) & 
-      (DATA['x'] >= min_x) &
-      (DATA['x'] <= max_x) &
-      (DATA['y'] >= min_y) &
-      (DATA['y'] <= max_y) &
-      (DATA['time'] >= min_time) &
-      (DATA['time'] <= max_time)
-    ),[ 'data_set', 'particle_id' ]]
+  #   neighbors = DATA.loc[( 
+  #     (DATA['data_set'] == data_set) & 
+  #     (DATA['particle_id'] != pid) & 
+  #     (DATA['x'] >= min_x) &
+  #     (DATA['x'] <= max_x) &
+  #     (DATA['y'] >= min_y) &
+  #     (DATA['y'] <= max_y) &
+  #     (DATA['time'] >= min_time) &
+  #     (DATA['time'] <= max_time)
+  #   ),[ 'data_set', 'particle_id' ]]
 
-    # If we have neighbors during an event, just ignore it
-    if len(neighbors) > 0:
-      p_data.loc[(p_data['event_id'] == event_id), 'event'] = '?'
+  #   # If we have neighbors during an event, just ignore it
+  #   if len(neighbors) > 0:
+  #     p_data.loc[(p_data['event_id'] == event_id), 'event'] = '?'
 
   return p_data
 
@@ -339,6 +344,7 @@ def filter_events(p_data, conf):
   if p_data.loc[((p_data['event_id'] != -1) & (p_data['median'] > 110)),'event_id'].count() <= 0:
     p_data.loc[:,'event'] = 'N'
     p_data.loc[:,'event_id'] = -1
+    p_data.loc[:,'filtered'] = 1
 
   to_remove = np.array([])
 
@@ -357,7 +363,7 @@ def filter_events(p_data, conf):
     events = p_data.loc[(p_data['event_id']) == event_id, 'event'].unique()
     # Remove ruptures for which there are no repair events
     if 'E' not in events:
-      to_remove.append(event_id)
+      np.append(to_remove, [ event_id ])
 
   to_remove = np.unique(to_remove).tolist()
 
@@ -485,7 +491,58 @@ def apply_parallel(grouped, fn, *args):
   print_progress_bar(total, 0)
   return pd.concat(rs.get(), sort=False)
 
+def find_nearest_neighbor_distances(f_data):
+  """
+  Get the nearest neighbors and distances for each particle_id
+
+  Given a dataframe for a given frame/data_set pair, will find the
+  nearest neighbor and its distance, using a KDTree
+
+  Arguments:
+    f_data Pandas DataFrame The dataframe
+
+  Returns:
+    Pands DataFrame The dataframe with the additional columns
+  """
+  # Build coordinate list
+  x = f_data['x'].tolist()
+  y = f_data['y'].tolist()
+  
+  coords = list(zip(x, y))
+
+  # Build KDTree
+  tree = spatial.KDTree(coords)
+
+  res = tree.query([ coords ], k=2)
+  distances = res[0][...,1][0]
+  idxs = res[1][...,1][0]
+  neighbor_ids = f_data['particle_id'].iloc[idxs].tolist()
+  f_data['nearest_neighbor'] = neighbor_ids
+  f_data['nearest_neighbor_distance'] = distances
+
+  return f_data
+
 if __name__ == '__main__':
+  # Find the distance to the nearest neighbor
+  groups = DATA.groupby([ 'data_set', 'frame' ])
+
+  modified_data = []
+  progress = 0
+  for name,group in groups:
+    progress = int(30*len(modified_data)/len(groups))
+    bar = "#" * progress + ' ' * (30 - progress)
+    print("\rFinding nearest neighbor |%s|" % bar, end="\r")
+
+    res = find_nearest_neighbor_distances(group.copy())
+    modified_data.append(res)
+
+  modified_data = pd.concat(modified_data)
+  bar = "#" * 30
+  print("\rFinding nearest neighbor |%s|" % bar, end="\r")
+  print()
+  # modified_data = DATA.copy()
+  modified_data['filtered'] = 0
+
   # groups = DATA.groupby([ 'data_set', 'particle_id' ])
   # results = []
   # for name, group in groups:
@@ -497,7 +554,7 @@ if __name__ == '__main__':
   #   exit()
 
   # classified_data = pd.concat(results)
-  classified_data = apply_parallel(DATA.groupby([ 'data_set', 'particle_id' ]), classify_particle_events)
+  classified_data = apply_parallel(modified_data.groupby([ 'data_set', 'particle_id' ]), classify_particle_events)
 
 output_path.mkdir(exist_ok=True)
 output_file_path = (output_path / (output_name)).resolve()
