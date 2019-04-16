@@ -136,36 +136,80 @@ def get_cell_stats(p_data, skip_filtered):
 
   return result
 
-def get_summary_table(results):
+def get_summary_table(results, data_set):
   names = []
-  true_positives = []
-  false_positives = []
-  true_negatives = []
-  false_negatives = []
+  nums_corr_positive = []
+  nums_pred_positive = []
+  nums_true_positive = []
+  nums_corr_negative = []
+  nums_pred_negative = []
+  nums_true_negative = []
+  
   for event,name in STATS_EVENT_MAP.items():
-    num_true_positive = results[((results['pred' + event] == True) & (results['true' + event] == True))].shape[0]
-    num_pred_positive = results[((results['pred' + event] == True))].shape[0]
-    num_true_negative = results[((results['pred' + event] == False) & (results['true' + event] == False))].shape[0]
-    num_pred_negative = results[((results['pred' + event] == False))].shape[0]
-
-    true_positive_rate = num_true_positive/num_pred_positive if num_pred_positive > 0 else 0
-    true_negative_rate = num_true_negative/num_pred_negative if num_pred_negative > 0 else 0
-
     names.append(name)
-    true_positives.append("{:.2%} ({}/{})".format(true_positive_rate, num_true_positive, num_pred_positive))
-    false_positives.append("{:.2%} ({}/{})".format((1-true_positive_rate), (num_pred_positive-num_true_positive), num_pred_positive))
-    true_negatives.append("{:.2%} ({}/{})".format(true_negative_rate, num_true_negative, num_pred_negative))
-    false_negatives.append("{:.2%} ({}/{})".format((1-true_negative_rate), (num_pred_negative-num_true_negative), num_pred_negative))
+    nums_corr_positive.append(results[((results['pred' + event] == True) & (results['true' + event] == True))].shape[0])
+    nums_pred_positive.append(results[((results['pred' + event] == True))].shape[0])
+    nums_true_positive.append(results[((results['true' + event] == True))].shape[0])
+    nums_corr_negative.append(results[((results['pred' + event] == False) & (results['true' + event] == False))].shape[0])
+    nums_pred_negative.append(results[((results['pred' + event] == False))].shape[0])
+    nums_true_negative.append(results[((results['true' + event] == False))].shape[0])
   
   summary = pd.DataFrame({
+    'data_set': [data_set] * len(names),
     'event': names,
-    'true_positive': true_positives,
-    'false_positives': false_positives,
-    'true_negatives': true_negatives,
-    'false_negatives': false_negatives
+    'num_corr_positive': nums_corr_positive,
+    'num_pred_positive': nums_pred_positive,
+    'num_true_positive': nums_true_positive,
+    'num_corr_negative': nums_corr_negative,
+    'num_pred_negative': nums_pred_negative,
+    'num_true_negative': nums_true_negative
   })
 
   return summary
+
+def prettify_summary_table(summary):
+  data_sets = []
+  events = []
+  true_positives = [] # Sensitivity
+  false_positives = [] # Fall-out
+  true_negatives = [] # Specificity
+  false_negatives = [] # Miss
+  ppv = [] # Precision
+  npv = []
+  fdr = []
+
+  for index,row in summary.iterrows():
+    true_positive_rate = row['num_corr_positive']/row['num_true_positive'] if row['num_true_positive'] > 0 else 0
+    false_positive_rate = 1-true_positive_rate if true_positive_rate > 0 else 0
+    true_negative_rate = row['num_corr_negative']/row['num_true_negative'] if row['num_pred_negative'] > 0 else 0
+    false_negative_rate = 1-true_negative_rate if true_negative_rate > 0 else 0
+    ppv_rate = row['num_corr_positive']/row['num_pred_positive'] if row['num_pred_positive'] > 0 else 0
+    npv_rate = row['num_corr_negative']/row['num_pred_negative'] if row['num_pred_negative'] > 0 else 0
+    fdr_rate = 1-ppv_rate if ppv_rate > 0 else 0
+
+    events.append(row['event'])
+    data_sets.append(row['data_set'])
+    true_positives.append("{:.2%} ({}/{})".format(true_positive_rate, row['num_corr_positive'], row['num_true_positive']))
+    false_positives.append("{:.2%} ({}/{})".format(false_positive_rate, (row['num_true_positive']-row['num_corr_positive']), row['num_true_positive']))
+    true_negatives.append("{:.2%} ({}/{})".format(true_negative_rate, row['num_corr_negative'], row['num_true_negative']))
+    false_negatives.append("{:.2%} ({}/{})".format(false_negative_rate, (row['num_true_negative']-row['num_corr_negative']), row['num_true_negative']))
+    ppv.append("{:.2%}, ({}/{})".format(ppv_rate, row['num_corr_positive'], row['num_pred_positive']))
+    npv.append("{:.2%}, ({}/{})".format(npv_rate, row['num_corr_negative'], row['num_pred_negative']))
+    fdr.append("{:.2%}, ({}/{})".format(fdr_rate, (row['num_pred_positive']-row['num_corr_positive']), row['num_pred_positive']))
+
+  pretty = pd.DataFrame({
+    'data_set': data_sets,
+    'event': events,
+    'true_positive': true_positives,
+    'false_positives': false_positives,
+    'true_negatives': true_negatives,
+    'false_negatives': false_negatives,
+    'ppv': ppv,
+    'npv': npv,
+    'fdr': fdr
+  })
+
+  return pretty
 
 def apply_parallel(grouped, fn, *args):
   """
@@ -197,16 +241,36 @@ if __name__ == '__main__':
   results = apply_parallel(data.groupby([ 'data_set', 'particle_id' ]), get_cell_stats, skip_filtered)
   results = pd.concat(results)
 
-  print("\033[1mTotal cells:\033[0m {}".format(results.shape[0]))
-  print()
+  headers = [
+    "",
+    "Event", 
+    "True positives", 
+    "False positives", 
+    "True negatives", 
+    "False negatives", 
+    "Pos. Predictive Value", 
+    "Neg. Predictive Value", 
+    "FDR"
+  ]
+
+  summary_table = []
   print("All:")
-  print(tabulate(get_summary_table(results), headers=["Event", "True positives", "False positives", "True negatives", "False negatives"]))
+  print("{} cells".format(results.shape[0]))
+  summary_table.append(get_summary_table(results, "All"))
+  print(tabulate(prettify_summary_table(summary_table[-1]), headers=headers))
   print()
   print("By dataset:")
   for data_set in results['data_set'].unique():
-    print("\033[1m" + data_set + "\033[0m")
-    print(tabulate(get_summary_table(results[(results['data_set'] == data_set)]), headers=["Event", "True positives", "False positives", "True negatives", "False negatives"]))
+    summary_table.append(get_summary_table(results[(results['data_set'] == data_set)], data_set))
+    print("  \033[1m" + data_set + "\033[0m")
+    print("  {} cells".format(results[(results['data_set'] == data_set)].shape[0]))
+    print(tabulate(prettify_summary_table(summary_table[-1]), headers=headers))
+    print()
 
+  summary_table = pd.concat(summary_table)
+
+  summary_table.to_csv(str(results_path / "summary.csv"), header=True, encoding='utf-8', index=None)
+  results.to_csv(str(results_path / "cell-results.csv"), header=True, encoding='utf-8', index=None)
 
 exit()
 
