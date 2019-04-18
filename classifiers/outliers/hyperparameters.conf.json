@@ -1,0 +1,5 @@
+{
+  "median_cutoff": [ -10, 10 ],
+  "area_cutoff": [ -10, 10 ],
+  "extreme_median_cutoff": [ -10, 10 ]
+}

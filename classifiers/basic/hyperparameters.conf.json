@@ -1,0 +1,10 @@
+{
+  "R-area_derivative": [ 0, 0.003 ],
+  "R-median_derivative": [ -0.001, 0 ],
+  "R-stationary_area": [ 0.5, 1 ],
+  "R-stationary_median": [ -0.7, 0 ],
+  "R-median_cutoff_frequency": [ 0, 0.05 ],
+  "R-area_cutoff_frequency": [ 0, 0.05 ],
+  "R-median_cutoff_scale_factor": [ 0, 2 ],
+  "R-area_cutoff_scale_factor": [ 0, 2 ]
+}

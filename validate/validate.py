@@ -31,6 +31,7 @@ sys.path.append(str(ROOT_PATH))
 
 from common.docopt import docopt
 from common.version import get_version
+from common.output import colorize
 
 import numpy as np
 import pandas as pd
@@ -40,29 +41,6 @@ import math
 import re
 from tabulate import tabulate
 from multiprocessing import Pool, cpu_count
-
-def colorize(color, string):
-  """
-  Used to print colored messages to terminal
-
-  Arguments:
-    color string The color to print
-    string string The message to print
-
-  Returns:
-    A formatted string
-  """
-  colors = {
-    "red": "31",
-    "green": "32",
-    "yellow": "33", 
-    "blue": "34",
-    "magenta": "35",
-    "cyan": "36",
-    "white": "37"
-  }
-
-  return "\033[" + colors[color] + "m" + string + "\033[0m"
 
 ### Constant for getting our base input dir
 QA_PATH  = (ROOT_PATH / ("validate/qa.py")).resolve()
@@ -170,6 +148,7 @@ def get_summary_table(results, data_set):
 def prettify_summary_table(summary):
   data_sets = []
   events = []
+  accuracies = []
   true_positives = [] # Sensitivity
   false_positives = [] # Fall-out
   true_negatives = [] # Specificity
@@ -179,6 +158,7 @@ def prettify_summary_table(summary):
   fdr = []
 
   for index,row in summary.iterrows():
+    accuracy = (row['num_corr_positive'] + row['num_corr_negative'])/(row['num_true_positive'] + row['num_true_negative'])
     true_positive_rate = row['num_corr_positive']/row['num_true_positive'] if row['num_true_positive'] > 0 else 0
     false_positive_rate = 1-true_positive_rate if true_positive_rate > 0 else 0
     true_negative_rate = row['num_corr_negative']/row['num_true_negative'] if row['num_pred_negative'] > 0 else 0
@@ -189,6 +169,7 @@ def prettify_summary_table(summary):
 
     events.append(row['event'])
     data_sets.append(row['data_set'])
+    accuracies.append("{:.2%}".format(accuracy))
     true_positives.append("{:.2%} ({}/{})".format(true_positive_rate, row['num_corr_positive'], row['num_true_positive']))
     false_positives.append("{:.2%} ({}/{})".format(false_positive_rate, (row['num_true_positive']-row['num_corr_positive']), row['num_true_positive']))
     true_negatives.append("{:.2%} ({}/{})".format(true_negative_rate, row['num_corr_negative'], row['num_true_negative']))
@@ -200,7 +181,8 @@ def prettify_summary_table(summary):
   pretty = pd.DataFrame({
     'data_set': data_sets,
     'event': events,
-    'true_positive': true_positives,
+    'accuracy': accuracies,
+    'true_positives': true_positives,
     'false_positives': false_positives,
     'true_negatives': true_negatives,
     'false_negatives': false_negatives,
@@ -244,6 +226,7 @@ if __name__ == '__main__':
   headers = [
     "",
     "Event", 
+    "Accuracy",
     "True positives", 
     "False positives", 
     "True negatives", 
