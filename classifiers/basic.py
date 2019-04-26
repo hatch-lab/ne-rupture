@@ -1,35 +1,5 @@
 # coding=utf-8
 
-"""
-NE rupture classifier
-
-Uses Python 3 and input from Imaris to identify cells that have undergone NE rupture and repair.
-Attempts to distinguish: rupture, repair, and mitosis/death (the latter are not yet distinguishable)
-Also attempts to identify the rate of GFP import during repair by fitting a one-phase exponential curve 
-to the intensity data. (Not yet.)
-
-Usage:
-  basic.py INPUT OUTPUT [--input-name=data.csv] [--output-name=results.csv] [--skip-graphs=0] [--img-dir=0] [--conf=0] [--max-processes=None]
-
-Arguments:
-  INPUT Path to the directory containing the processed output file
-  OUTPUT Path to where the classified data CSV file should be saved
-
-Options:
-  -h --help Show this screen.
-  --version Show version.
-  --input-name=<string> [defaults: data.csv] The name of the input CSV file
-  --output-name=<string> [defaults: results.csv] The name of the resulting CSV file
-  --skip-graphs=<bool> [defaults: False] If True, won't output graphs or videos
-  --img-dir=<string> [defaults: INPUT/../images] The directory that contains TIFF images of each frame, for outputting videos.
-  --conf=<string> [defaults: None] Override configuration options in conf.json with a JSON string.
-  --max-processes=<int> [defaults: cpu_count()] The number of processes this classifier can use
-
-Output:
-  Writes a CSV to OUTPUT with all classified events (the null event is not included).
-  In addition, annotated videos of each cell-event will be produced, as well as a full-size, 
-  annotated video.
-"""
 import sys
 import os
 from pathlib import Path
@@ -39,42 +9,18 @@ ROOT_PATH = Path(__file__ + "/../..").resolve()
 sys.path.append(str(ROOT_PATH))
 
 from common.docopt import docopt
-from common.version import get_version
 
 import math
 import numpy as np
 import pandas as pd
-import csv
 import json
 from multiprocessing import Pool, cpu_count
-import subprocess
 from time import sleep
 
-arguments = docopt(__doc__, version=get_version())
-
-### Constant for getting our base input dir
-QA_PATH  = (ROOT_PATH / ("validate/qa.py")).resolve()
+NAME = "basic"
 CONF_PATH = (ROOT_PATH / ("classifiers/basic/conf.json")).resolve()
-if arguments['--conf'] is not None and arguments['--conf'] is not "0":
-  CONF = json.loads(arguments['--conf'])
-else:
-  with CONF_PATH.open(mode='r') as file:
-    CONF = json.load(file)
 
-### Arguments and inputs
-input_path = (ROOT_PATH / (arguments['INPUT'])).resolve()
-output_path = (ROOT_PATH / (arguments['OUTPUT'])).resolve()
-data_file_path = input_path / (arguments['--input-name']) if arguments['--input-name'] else input_path / "data.csv"
-tiff_path = input_path / (arguments['--img-dir']) if arguments['--img-dir'] else (input_path / ("../images/")).resolve()
-output_name = arguments['--outpuit-name'] if arguments['--output-name'] else "results.csv"
-skip_graphs = True if arguments['--skip-graphs'] else False
-max_processes = int(arguments['--max-processes']) if arguments['--max-processes'] else cpu_count()
-
-
-### Read our data
-data = pd.read_csv(str(data_file_path), header=0, dtype={ 'particle_id': str })
-
-def classify_particle_events(p_data, convergence_limit = 3E-6):
+def classify_particle_events(p_data, conf, convergence_limit = 3E-6):
   """
   Classify the events in a particle
 
@@ -90,12 +36,6 @@ def classify_particle_events(p_data, convergence_limit = 3E-6):
     Panda DataFrame
   """
 
-  # Seed rupture events
-  p_data.loc[:,'event'] = 'N'
-  p_data.loc[:,'event_id'] = -1
-  p_data = seed_ruptures(p_data, CONF)
-  # p_data = seed_mitoses(p_data, CONF) # Just skip for now
-
   idx = (p_data['event'] != 'N')
   p_data.loc[idx, 'event_id'] = (p_data.loc[idx,'frame'].diff() > 1).cumsum()
 
@@ -110,7 +50,7 @@ def classify_particle_events(p_data, convergence_limit = 3E-6):
 
   return p_data
 
-def seed_ruptures(p_data, conf):
+def seed_ruptures(data, conf):
   """
   Seeds rupture events for full classification
 
@@ -122,188 +62,10 @@ def seed_ruptures(p_data, conf):
     Panda DataFrame The modified particle data
   """
 
-  # Filter out particularly noisy signals
-  n_rows = p_data.shape[0]
-  n_cutoff_rows = p_data.loc[(p_data['median_derivative'] <= conf['R-median_derivative']*conf['R-median_cutoff_scale_factor'] ),:].shape[0]
+  idx = ((data['median_derivative'] <= conf['R-median_derivative']) & (data['area_derivative'] >= conf['R-area_derivative']))
+  data.loc[idx, 'event'] = 'R'
 
-  if n_cutoff_rows/n_rows > conf['R-median_cutoff_frequency']:
-    return p_data
-
-  n_cutoff_rows = p_data.loc[(p_data['area_derivative'] >= conf['R-area_derivative']*conf['R-area_cutoff_scale_factor'] ),:].shape[0]
-  if n_cutoff_rows/n_rows > conf['R-area_cutoff_frequency']:
-    return p_data
-
-  idx = get_initial_ruptures(p_data, conf)
-  p_data.loc[idx, 'event'] = 'R'
-
-  return p_data
-
-def seed_mitoses(p_data, conf):
-  """
-  Seeds mitosis events for full classification
-
-  Arguments:
-    p_data Panda DataFrame The particle data
-    conf dict Cutoffs for various parameters used for finding mitosis events
-
-  Returns:
-    Panda DataFrame The modified particle data
-  """
-  idx = get_initial_mitoses(p_data, conf)
-  p_data.loc[idx, 'event'] = 'M'
-
-  # We need to change any events that precede mitosis into mitosis
-  iterate = True
-  while iterate is True:
-    p_data.loc[:,'next_event'] = p_data['event'].shift(-1)
-    idx = (
-      (p_data['event'] != 'N') &
-      (p_data['event'] != 'M') &
-      (p_data['next_event'] == 'M') 
-    ) # I am not mitosis or nothing, but the next event is mitosis
-
-    if p_data.loc[idx, 'event'].count() <= 0:
-      iterate = False
-    else:
-      p_data.loc[idx, 'event'] = 'M'
-
-  return p_data
-
-def get_initial_ruptures(p_data, conf):
-  """
-  Finds ruptures for seeding events in our data
-
-  Finds ruptures as frames in which:
-    - The rate of area increase is above area_derivative cutoff AND
-    - The rate of signal decrease is below median_derivative cutoff AND
-    - The rate of sum change is within the range specified by sum_derivative
-
-  Arguments:
-    p_data Panda DataFrame The particle data
-    conf dict The cutoff values
-
-  Returns:
-    Panda Index Frames that should be marked as ruptures
-  """
-  p_data.loc[:,'next_median_derivative'] = p_data['median_derivative'].shift(-1)
-  p_data.loc[:,'next_area_derivative'] = p_data['area_derivative'].shift(-1)
-
-  idx = (
-    (
-      # The area lies under the cutoff, and next time point's median does
-      (
-        (p_data['next_median_derivative'] <= conf['R-median_derivative']) & 
-        (p_data['area_derivative'] >= conf['R-area_derivative']) &
-        (p_data['sum_derivative'] >= conf['R-sum_derivative_lower']) &
-        (p_data['sum_derivative'] <= conf['R-sum_derivative_upper'])
-      ) |
-      # The median lies above the cutoff, and next time point's area does
-      (
-        (p_data['median_derivative'] <= conf['R-median_derivative']) & 
-        (p_data['next_area_derivative'] >= conf['R-area_derivative']) &
-        (p_data['sum_derivative'] >= conf['R-sum_derivative_lower']) &
-        (p_data['sum_derivative'] <= conf['R-sum_derivative_upper'])
-      ) |
-      (
-        (p_data['median_derivative'] <= conf['R-median_derivative']) & 
-        (p_data['area_derivative'] >= conf['R-area_derivative']) &
-        (p_data['sum_derivative'] >= conf['R-sum_derivative_lower']) &
-        (p_data['sum_derivative'] <= conf['R-sum_derivative_upper'])
-      ) |
-      (
-        (p_data['stationary_median'] <= conf['R-stationary_median']) &
-        (p_data['stationary_area'] >= conf['R-stationary_area']) 
-      )
-    )
-  )
-
-  if p_data[idx]['event'].count() <= 0:
-    return idx
-
-  time = p_data[idx].iloc[0]['time']
-
-  return (
-    (
-      # The area lies under the cutoff, and next time point's median does
-      (
-        (p_data['time'] <= time) & 
-        (p_data['next_median_derivative'] <= conf['R-median_derivative']) & 
-        (p_data['area_derivative'] >= conf['R-area_derivative']) &
-        (p_data['sum_derivative'] >= conf['R-sum_derivative_lower']) &
-        (p_data['sum_derivative'] <= conf['R-sum_derivative_upper'])
-      ) |
-      # The median lies above the cutoff, and next time point's area does
-      (
-        (p_data['time'] <= time) & 
-        (p_data['median_derivative'] <= conf['R-median_derivative']) & 
-        (p_data['next_area_derivative'] >= conf['R-area_derivative']) &
-        (p_data['sum_derivative'] >= conf['R-sum_derivative_lower']) &
-        (p_data['sum_derivative'] <= conf['R-sum_derivative_upper'])
-      ) |
-      (
-        (p_data['time'] <= time) & 
-        (p_data['median_derivative'] <= conf['R-median_derivative']) & 
-        (p_data['area_derivative'] >= conf['R-area_derivative']) &
-        (p_data['sum_derivative'] >= conf['R-sum_derivative_lower']) &
-        (p_data['sum_derivative'] <= conf['R-sum_derivative_upper'])
-      ) |
-      (
-        (p_data['time'] <= time) & 
-        (p_data['stationary_median'] <= conf['R-stationary_median']) &
-        (p_data['stationary_area'] >= conf['R-stationary_area']) 
-      ) |
-      (
-        (p_data['time'] > time) & 
-        (p_data['next_median_derivative'] <= conf['R-post_rupture_median_derivative']) & 
-        (p_data['area_derivative'] >= conf['R-post_rupture_area_derivative']) &
-        (p_data['sum_derivative'] >= conf['R-sum_derivative_lower']) &
-        (p_data['sum_derivative'] <= conf['R-sum_derivative_upper'])
-      ) |
-      # The median lies above the cutoff, and next time point's area does
-      (
-        (p_data['time'] > time) & 
-        (p_data['median_derivative'] <= conf['R-post_rupture_median_derivative']) & 
-        (p_data['next_area_derivative'] >= conf['R-post_rupture_area_derivative']) &
-        (p_data['sum_derivative'] >= conf['R-sum_derivative_lower']) &
-        (p_data['sum_derivative'] <= conf['R-sum_derivative_upper'])
-      ) |
-      (
-        (p_data['time'] > time) & 
-        (p_data['median_derivative'] <= conf['R-post_rupture_median_derivative']) & 
-        (p_data['area_derivative'] >= conf['R-post_rupture_area_derivative']) &
-        (p_data['sum_derivative'] >= conf['R-sum_derivative_lower']) &
-        (p_data['sum_derivative'] <= conf['R-sum_derivative_upper'])
-      ) |
-      (
-        (p_data['time'] > time) & 
-        (p_data['stationary_median'] <= conf['R-post_rupture_stationary_median']) &
-        (p_data['stationary_area'] >= conf['R-post_rupture_stationary_area']) 
-      )
-    )
-  )
-
-def get_initial_mitoses(p_data, conf):
-  """
-  Finds mitoses for seeding events in our data
-
-  Finds mitoses as frames in which:
-    - The rate of area increase is above area_derivative cutoff AND
-    - The rate of signal decrease is below median_derivative cutoff AND
-    - The oblate ellipticity above the oblate_ellipticity cutoff
-
-  Arguments:
-    p_data Panda DataFrame The particle data
-    conf dict The cutoff values
-
-  Returns:
-    Panda Index Frames that should be marked as mitoses
-  """
-
-  return ( 
-    (p_data['oblate_ellipticity'] >= conf['M-oblate_ellipticity']) &
-    (p_data['median_derivative'] <= conf['M-median_derivative']) &
-    (p_data['area_derivative'] >= conf['M-area_derivative'])
-  )
+  return data
 
 def extend_events(p_data, conf):
   """
@@ -553,31 +315,18 @@ def apply_parallel(grouped, fn, *args):
   print_progress_bar(total, 0)
   return pd.concat(rs.get(), sort=False)
 
-if __name__ == '__main__':
-  # groups = data.groupby([ 'data_set', 'particle_id' ])
-  # results = []
-  # for name, group in groups:
-  #   if name[1] != '053':
-  #     continue
-  #   res = classify_particle_events(group)
-  #   results.append(res)
-  # exit()
+def run(data, conf=False, fast=False):
+  if not conf:
+    with CONF_PATH.open(mode='r') as file:
+      conf = json.load(file)
 
-  # data = pd.concat(results)
-  data = apply_parallel(data.groupby([ 'data_set', 'particle_id' ]), classify_particle_events)
+  # Classify
+  data.loc[:,'event'] = 'N'
+  data.loc[:,'event_id'] = -1
+  data = seed_ruptures(data, conf)
 
-output_path.mkdir(exist_ok=True)
-output_file_path = (output_path / (output_name)).resolve()
-data.to_csv(str(output_file_path), header=True, encoding='utf-8', index=None)
+  if not fast:
+    data = apply_parallel(data.groupby([ 'data_set', 'particle_id' ]), classify_particle_events)
 
-if not skip_graphs:
-  cmd = [
-    "python",
-    str(QA_PATH),
-    os.path.splitext(os.path.basename(__file__))[0],
-    output_file_path,
-    str(output_path),
-    "--img-dir=" + str(tiff_path)
-  ]
-  subprocess.call(cmd)
+  return data
 

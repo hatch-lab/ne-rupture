@@ -1,35 +1,5 @@
 # coding=utf-8
 
-"""
-NE rupture classifier
-
-Uses Python 3 and input from Imaris to identify cells that have undergone NE rupture and repair.
-Attempts to distinguish: rupture, repair, and mitosis/death (the latter are not yet distinguishable)
-Also attempts to identify the rate of GFP import during repair by fitting a one-phase exponential curve 
-to the intensity data. (Not yet.)
-
-Usage:
-  basic.py INPUT OUTPUT [--input-name=data.csv] [--output-name=results.csv] [--skip-graphs=0] [--img-dir=0] [--conf=0] [--max-processes=None]
-
-Arguments:
-  INPUT Path to the directory containing the processed output file
-  OUTPUT Path to where the classified data CSV file should be saved
-
-Options:
-  -h --help Show this screen.
-  --version Show version.
-  --input-name=<string> [defaults: data.csv] The name of the input CSV file
-  --output-name=<string> [defaults: results.csv] The name of the resulting CSV file
-  --skip-graphs=<bool> [defaults: False] If True, won't output graphs or videos
-  --img-dir=<string> [defaults: INPUT/../images] The directory that contains TIFF images of each frame, for outputting videos.
-  --conf=<string> [defaults: None] Override configuration options in conf.json with a JSON string.
-  --max-processes=<int> [defaults: cpu_count()] The number of processes this classifier can use
-
-Output:
-  Writes a CSV to OUTPUT with all classified events (the null event is not included).
-  In addition, annotated videos of each cell-event will be produced, as well as a full-size, 
-  annotated video.
-"""
 import sys
 import os
 from pathlib import Path
@@ -39,44 +9,20 @@ ROOT_PATH = Path(__file__ + "/../..").resolve()
 sys.path.append(str(ROOT_PATH))
 
 from common.docopt import docopt
-from common.version import get_version
 
 import math
 import numpy as np
 import pandas as pd
-import csv
 import json
 from scipy.stats import iqr
 from scipy import spatial
 from multiprocessing import Pool, cpu_count
-import subprocess
 from time import sleep
 
-arguments = docopt(__doc__, version=get_version())
+NAME = "outliers"
+CONF_PATH = (ROOT_PATH / ("classifiers/" + NAME + "/conf.json")).resolve()
 
-### Constant for getting our base input dir
-QA_PATH  = (ROOT_PATH / ("validate/qa.py")).resolve()
-CONF_PATH = (ROOT_PATH / ("classifiers/outliers/conf.json")).resolve()
-if arguments['--conf'] is not None and arguments['--conf'] is not "0":
-  CONF = json.loads(arguments['--conf'])
-else:
-  with CONF_PATH.open(mode='r') as file:
-    CONF = json.load(file)
-
-### Arguments and inputs
-input_path = (ROOT_PATH / (arguments['INPUT'])).resolve()
-output_path = (ROOT_PATH / (arguments['OUTPUT'])).resolve()
-data_file_path = input_path / (arguments['--input-name']) if arguments['--input-name'] else input_path / "data.csv"
-tiff_path = input_path / (arguments['--img-dir']) if arguments['--img-dir'] else (input_path / ("../images/")).resolve()
-output_name = arguments['--output-name'] if arguments['--output-name'] else "results.csv"
-skip_graphs = True if arguments['--skip-graphs'] else False
-max_processes = int(arguments['--max-processes']) if arguments['--max-processes'] else cpu_count()
-
-
-### Read our data
-DATA = pd.read_csv(str(data_file_path), header=0, dtype={ 'particle_id': str })
-
-def classify_particle_events(p_data, convergence_limit = 3E-6):
+def classify_particle_events(p_data, conf, convergence_limit = 3E-6):
   """
   Classify the events in a particle
 
@@ -93,26 +39,29 @@ def classify_particle_events(p_data, convergence_limit = 3E-6):
     Panda DataFrame
   """
 
-  # Seed events
+  p_data['filtered'] = 0
+
   p_data.loc[:,'event'] = 'N'
   p_data.loc[:,'event_id'] = -1
-  p_data = seed_events(p_data, CONF)
+
+  # Seed event
+  p_data = seed_events(p_data, conf)
 
   # Give an ID to each event
   idx = (p_data['event'] != 'N')
   p_data.loc[idx, 'event_id'] = (p_data.loc[idx,'frame'].diff() > 1).cumsum()
 
   # Find event ends
-  p_data = extend_events(p_data, CONF)
+  p_data = extend_events(p_data, conf)
 
   # Figure out what the events are
-  p_data = classify_events(p_data, CONF)
+  p_data = classify_events(p_data, conf)
 
   # Find when events begin to recover
-  p_data = find_event_recoveries(p_data, CONF)
+  p_data = find_event_recoveries(p_data, conf)
 
   # Filter out events that were captured incorrectly
-  p_data = filter_events(p_data, CONF)
+  p_data = filter_events(p_data, conf)
 
   return p_data
 
@@ -133,15 +82,15 @@ def seed_events(p_data, conf):
   area_data = p_data['stationary_area'].dropna()
 
   idx1 = (
-    (p_data['stationary_median'] < np.quantile(median_data, 0.25)-conf['median_cutoff']*iqr(median_data)) &
-    (p_data['stationary_area'] > np.quantile(area_data, 0.75)+conf['area_cutoff']*iqr(area_data))
+    (p_data['stationary_median'] <= conf['median_cutoff']*iqr(median_data)) &
+    (p_data['stationary_area'] >= conf['area_cutoff']*iqr(area_data))
   )
 
-  idx2 = (
-    (p_data['stationary_median'] < conf['extreme_median_cutoff']*iqr(median_data)) 
-  )
+  # idx2 = (
+  #   (p_data['stationary_median'] < conf['extreme_median_cutoff']*iqr(median_data)) 
+  # )
 
-  p_data.loc[( idx1 | idx2 ), 'event'] = '?'
+  p_data.loc[( idx1 ), 'event'] = '?'
 
   return p_data
 
@@ -169,6 +118,8 @@ def extend_events(p_data, conf):
     no_event_idx = (p_data['event'] == 'N')
     baseline_median = np.mean(p_data.loc[no_event_idx, 'stationary_median']) if no_event_idx.any() else 0
     old_baseline_median = 1E6
+
+    start = None
 
     while(math.pow(baseline_median - old_baseline_median, 2) >= convergence_limit):
       # Look forward
@@ -207,12 +158,13 @@ def extend_events(p_data, conf):
       baseline_median = np.mean(p_data.loc[(p_data['event'] == 'N'), 'stationary_median'])
 
     # Extend backwards 1 frame
-    idx = (
-      (p_data['frame'] == start-1) & 
-      (p_data['event_id'] == event_id)
-    )
-    p_data.loc[idx, 'event'] = '?'
-    p_data.loc[idx, 'event_id'] = event_id
+    if start is not None:
+      idx = (
+        (p_data['frame'] == start-1) & 
+        (p_data['event_id'] == event_id)
+      )
+      p_data.loc[idx, 'event'] = '?'
+      p_data.loc[idx, 'event_id'] = event_id
   
   return p_data
 
@@ -522,53 +474,32 @@ def find_nearest_neighbor_distances(f_data):
 
   return f_data
 
-if __name__ == '__main__':
+def run(data, conf=False):
+  if not conf:
+    with CONF_PATH.open(mode='r') as file:
+      conf = json.load(file)
+      
   # Find the distance to the nearest neighbor
-  groups = DATA.groupby([ 'data_set', 'frame' ])
+  # groups = data.groupby([ 'data_set', 'frame' ])
 
-  modified_data = []
-  progress = 0
-  for name,group in groups:
-    progress = int(30*len(modified_data)/len(groups))
-    bar = "#" * progress + ' ' * (30 - progress)
-    print("\rFinding nearest neighbor |%s|" % bar, end="\r")
+  # modified_data = []
+  # progress = 0
+  # for name,group in groups:
+  #   progress = int(30*len(modified_data)/len(groups))
+  #   bar = "#" * progress + ' ' * (30 - progress)
+  #   print("\rFinding nearest neighbor |%s|" % bar, end="\r")
 
-    res = find_nearest_neighbor_distances(group.copy())
-    modified_data.append(res)
+  #   res = find_nearest_neighbor_distances(group.copy())
+  #   modified_data.append(res)
 
-  modified_data = pd.concat(modified_data)
-  bar = "#" * 30
-  print("\rFinding nearest neighbor |%s|" % bar, end="\r")
-  print()
+  # modified_data = pd.concat(modified_data)
+  # bar = "#" * 30
+  # print("\rFinding nearest neighbor |%s|" % bar, end="\r")
+  # print()
+
   # modified_data = DATA.copy()
-  modified_data['filtered'] = 0
 
-  # groups = DATA.groupby([ 'data_set', 'particle_id' ])
-  # results = []
-  # for name, group in groups:
-  #   if name[1] not in [ '050' ]:
-  #   # if name[1] not in [ '001', '012', '022', '028', '034', '096', '111', '112' ]:
-  #     continue
-  #   res = classify_particle_events(group.copy())
-  #   results.append(res)
-  #   exit()
+  # Classify
+  data = apply_parallel(data.groupby([ 'data_set', 'particle_id' ]), classify_particle_events, conf)
 
-  # classified_data = pd.concat(results)
-  classified_data = apply_parallel(modified_data.groupby([ 'data_set', 'particle_id' ]), classify_particle_events)
-
-output_path.mkdir(exist_ok=True)
-output_file_path = (output_path / (output_name)).resolve()
-classified_data.to_csv(str(output_file_path), header=True, encoding='utf-8', index=None)
-
-if not skip_graphs:
-  cmd = [
-    "python",
-    str(QA_PATH),
-    os.path.splitext(os.path.basename(__file__))[0],
-    output_file_path,
-    str(output_path),
-    "--img-dir=" + str(tiff_path)
-  ]
-  subprocess.call(cmd)
-
-  
+  return data
