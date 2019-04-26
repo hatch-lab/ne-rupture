@@ -4,13 +4,14 @@
 Attempts to find optimal parameters for a given model
 
 Usage:
-  find-hyperparameters.py CLASSIFIER [--verbose=0]
+  find-hyperparameters.py CLASSIFIER [--test-data-folder=validate/validation-data/input/] [--steps=3600]
 
 Arguments:
   CLASSIFIER The name of the classifier to test
 
 Options:
-  --verbose=<Bool> Whether to print the output from the classifier
+  --test-data-folder=<string> [defaults: validate/validation-data/input] The directory with the CSV file containing particle data with true events
+  --steps=<int> [defaults: 60] The number of values to try for each hyper parameter
 
 Output:
   CSV file with parameter, TP, and FN rates for drawing AUC
@@ -18,6 +19,7 @@ Output:
 import sys
 import os
 from pathlib import Path
+from importlib import import_module
 
 ROOT_PATH = Path(__file__ + "/../..").resolve()
 
@@ -26,7 +28,9 @@ sys.path.append(str(ROOT_PATH))
 from common.docopt import docopt
 from common.version import get_version
 from common.output import colorize
+from lib import get_cell_stats,get_summary_table
 
+from collections import deque
 import numpy as np
 import pandas as pd
 import json
@@ -36,52 +40,71 @@ import re
 import time
 import math
 
-### Constants
-VALIDATE_PATH     = (ROOT_PATH / ("validate/validate.py")).resolve()
-MAX_PROCESSES     = 4
-
 ### Arguments and inputs
 arguments = docopt(__doc__, version=get_version())
 
-classifier = re.sub(r'[^a-zA-Z0-9\-\_\.\+]', '', arguments['CLASSIFIER'])
-if classifier != arguments['CLASSIFIER']:
-  print(colorize("yellow", "Classifier input has been sanitized to " + classifier))
+classifier_name = re.sub(r'[^a-zA-Z0-9\-\_\.\+]', '', arguments['CLASSIFIER'])
+if classifier_name != arguments['CLASSIFIER']:
+  print(colorize("yellow", "Classifier input has been sanitized to " + classifier_name))
 
-verbose = True if arguments['--verbose'] else False
+data_file_path = Path(arguments['--test-data-folder']).resolve() if arguments['--test-data-folder'] else Path("validate/validation-data/input/data.csv").resolve()
+if not data_file_path.exists():
+  print(colorize("red", "Data folder input cannot be found: \033[1m" + str(data_file_path) + "\033[0m"))
+  exit(1)
 
-hyper_conf_path = (ROOT_PATH / ("classifiers/" + classifier + "/hyperparameters.conf.json")).resolve()
-conf_path       = (ROOT_PATH / ("classifiers/" + classifier + "/conf.json")).resolve()
-output_path     = (ROOT_PATH / ("validate/output/" + classifier)).resolve()
+steps = int(arguments['--steps']) if arguments['--steps'] else 3600
 
-def run_model(validate_path, classifier, output_path, conf_path, param, value):
+hyper_conf_path = (ROOT_PATH / ("classifiers/" + classifier_name + "/hyperparameters.conf.json")).resolve()
+conf_path       = (ROOT_PATH / ("classifiers/" + classifier_name + "/conf.json")).resolve()
+output_path     = (ROOT_PATH / ("validate/output/" + classifier_name)).resolve()
+
+### Get our classifier
+if not (ROOT_PATH / ("classifiers/" + classifier_name + ".py")).exists():
+  print(colorize("red", "No such classifier exists"))
+
+classifier = import_module("classifiers." + classifier_name)
+
+data = pd.read_csv(str(data_file_path), header=0, dtype={ 'particle_id': str })
+
+def apply_parallel(grouped, fn, *args):
+  """
+  Function for parallelizing particle classification
+
+  Will take each DataFrame produced by grouping by particle_id
+  and pass that data to the provided function, along with the 
+  supplied arguments.
+
+  Arguments:
+    grouped List of grouped particle data
+    fn function The function called with a group as a parameter
+    args Arguments to pass through to fn
+
+  Returns:
+    Pandas DataFrame The re-assembled data.
+  """
+  with Pool(cpu_count()) as p:
+    groups = []
+    for name, group in grouped:
+      t = tuple([ group ]) + tuple(args)
+      groups.append(t)
+    chunk = p.starmap(fn, groups)
+
+  return chunk
+
+def run_model(classifier, conf, data):
   """
   
   """
-  # Get conf
-  with conf_path.open(mode='r') as file:
-    conf = json.load(file)
+  classified_data = classifier.run(data, conf, True)
 
-  # Sample possible values for each parameter in [hyper_conf]
-  conf[param] = value
-
-  cmd = [
-    "python",
-    str(validate_path),
-    classifier,
-    "--classifier-conf=" + json.dumps(conf)
-  ]
-
-  try:
-    if verbose:
-      subprocess.check_call(cmd)
-    else:
-      out = subprocess.check_output(cmd)
-  except:
-    print(colorize("red", "Could not run classifier \033[1m" + classifier + "\033[0m"))
-    exit(1)
-
-  results_file_path = output_path / "summary.csv"
-  summary = pd.read_csv(str(results_file_path), header=0)
+  # Get summary data
+  results = apply_parallel(classified_data.groupby([ 'data_set', 'particle_id' ]), get_cell_stats, False)
+  results = pd.concat(results)
+  summary = []
+  summary.append(get_summary_table(results, "All"))
+  for data_set in results['data_set'].unique():
+    summary.append(get_summary_table(results[(results['data_set'] == data_set)], data_set))
+  summary = pd.concat(summary)
 
   num_rows = summary.shape[0]
 
@@ -95,8 +118,6 @@ def run_model(validate_path, classifier, output_path, conf_path, param, value):
   summary.loc[idx, 'specificity'] = summary.loc[idx, 'num_corr_negative'] / summary.loc[idx, 'num_true_negative']
 
   summary = summary[[ 'data_set', 'event', 'sensitivity', 'specificity' ]]
-  summary['param'] = param
-  summary['value'] = value
 
   return summary
 
@@ -104,47 +125,55 @@ def run_model(validate_path, classifier, output_path, conf_path, param, value):
 with hyper_conf_path.open(mode='r') as file:
   hyper_conf = json.load(file)
 
-params_left = list(hyper_conf.keys())
-current_param = params_left.pop(0)
+# Get conf
+with conf_path.open(mode='r') as file:
+  orig_conf = json.load(file)
+
+params = list(hyper_conf.keys())
+param_ranges = []
+divisor = steps**(float(1)/len(params))
+params_string = []
+for param in params:
+  min_value = np.min(hyper_conf[param])
+  max_value = np.max(hyper_conf[param])
+  delta = (max_value-min_value)/divisor
+  param_ranges.append(np.arange(min_value, max_value, delta))
+  params_string.append("{} = {:2.4f}")
+
+params_string = ", ".join(params_string)
+params_string = "\r Checking: " + params_string + " ({}/{}) Avg. time/run: {:2.2f} s"
+
+combinations = np.array(np.meshgrid(*param_ranges)).T.reshape(-1, len(params))
 
 results = []
 
-print("Running model \033[1m{}\033[0m...".format(classifier))
-while(current_param is not None):
-  max_value = np.max(hyper_conf[current_param])
-  min_value = np.min(hyper_conf[current_param])
-  current_param_value = float(min_value)
-  delta = (max_value - min_value) / 60
-  while(current_param_value <= max_value):
-    if not verbose:
-      progress = int(40*(current_param_value-min_value)/(max_value-min_value))
-      bar = "#" * progress + ' ' * (40 - progress)
-      print("\r  Checking {} |{}| ({:2.4f})".format(current_param, bar, current_param_value), end="\r")
+print("Running model \033[1m{}\033[0m...".format(classifier_name))
+times = deque([])
+for i, combination in enumerate(combinations):
+  avg_time = np.sum(times)/len(times) if len(times) > 0 else 0
+  start = time.time()
 
-    results.append(run_model(VALIDATE_PATH, classifier, output_path, conf_path, current_param, current_param_value))
-    current_param_value = current_param_value + delta
+  conf = orig_conf.copy()
+  pretty_param_vals = []
+  for j,param in enumerate(params):
+    conf[param] = combination[j]
+    pretty_param_vals.append(param)
+    pretty_param_vals.append(combination[j])
+  pretty_param_vals.append(i)
+  pretty_param_vals.append(len(combinations))
+  pretty_param_vals.append(avg_time)
 
-  bar = "#" * 40
-  print("\r  Checking {} |{}| ({:.4f})".format(current_param, bar, current_param_value), end="\r")
-  print()
+  print(params_string.format(*pretty_param_vals), end="\r")
 
-  current_param = params_left.pop(0) if len(params_left) > 0 else None
+  summary = run_model(classifier, conf, data)
+  for j,param in enumerate(params):
+    summary[param] = combination[j]
 
+  results.append(summary)
+  times.append(time.time()-start)
+  if len(times) > 10:
+    times.popleft()
+
+print()
 result = pd.concat(results)
-result = pd.DataFrame(result)
 result.to_csv(str(output_path / "auc.csv"), header=True, encoding='utf-8', index=None)
-
-# Finish out by restoring original summary/cell-data stats
-cmd = [
-  "python",
-  str(VALIDATE_PATH),
-  classifier
-]
-try:
-  if verbose:
-    subprocess.check_call(cmd)
-  else:
-    out = subprocess.check_output(cmd)
-except:
-  print(colorize("red", "Could not run restore summary.csv and cell-data.csv for \033[1m" + classifier + "\033[0m"))
-  exit(1)

@@ -4,15 +4,16 @@
 Calculates scores for a given classifier
 
 Usage:
-  validate.py CLASSIFIER [--test-data-folder=validate/validation-data/input/] [--classifier-conf=0] [--max-processes=4] [--skip-graphs=0] [--skip-filtered=0]
+  validate.py CLASSIFIER [--input_path=validate/validation-data/input/] [--input-name=data.csv] [--img-dir=0] [--classifier-conf=0] [--skip-graphs=0] [--skip-filtered=0]
 
 Arguments:
   CLASSIFIER The name of the classifier to test
 
 Options:
-  --test-data-folder=<string> [defaults: validate/validation-data/input] The directory with the CSV file containing particle data with true events
+  --input_path=<string> [defaults: validate/validation-data/input] The directory with the CSV file containing particle data with true events
+  --input-name=<string> [defaults: data.csv] The name of the input CSV file
+  --img-dir=<string> [defaults: INPUT/../images] The directory that contains TIFF images of each frame, for outputting videos.
   --classifier-conf=<string> [defaults: None] Will be passed along to the classifier.
-  --max-processes=<int> [defaults: 4] The number of threads we will allow the classifier to use.
   --skip-graphs=<bool> [defaults: False] If True, won't output graphs or videos
   --skip-filtered=<bool> [defaults: False] If True, won't include filtered data in summary stats
 
@@ -24,6 +25,7 @@ Output:
 import sys
 import os
 from pathlib import Path
+from importlib import import_module
 
 ROOT_PATH = Path(__file__ + "/../..").resolve()
 
@@ -33,9 +35,10 @@ from common.docopt import docopt
 from common.version import get_version
 from common.output import colorize
 
+from lib import get_cell_stats,get_summary_table
+
 import numpy as np
 import pandas as pd
-import csv
 import subprocess
 import math
 import re
@@ -45,105 +48,42 @@ from multiprocessing import Pool, cpu_count
 ### Constant for getting our base input dir
 QA_PATH  = (ROOT_PATH / ("validate/qa.py")).resolve()
 
-STATS_EVENT_MAP = {
-  "R": "Rupture",
-  "M": "Mitosis",
-  "X": "Apoptosis"
-}
-
 ### Arguments and inputs
 arguments = docopt(__doc__, version=get_version())
 
-classifier = re.sub(r'[^a-zA-Z0-9\-\_\.\+]', '', arguments['CLASSIFIER'])
-if classifier != arguments['CLASSIFIER']:
-  print(colorize("yellow", "Classifier input has been sanitized to " + classifier))
+classifier_name = re.sub(r'[^a-zA-Z0-9\-\_\.\+]', '', arguments['CLASSIFIER'])
+if classifier_name != arguments['CLASSIFIER']:
+  print(colorize("yellow", "Classifier input has been sanitized to " + classifier_name))
 
-data_file_path = Path(arguments['--test-data-folder']).resolve() if arguments['--test-data-folder'] else Path("validate/validation-data/input/").resolve()
-if not data_file_path.exists():
-  print(colorize("red", "Data folder input cannot be found: \033[1m" + str(data_file_path) + "\033[0m"))
+input_path = Path(arguments['--input_path']).resolve() if arguments['--input_path'] else Path("validate/validation-data/input").resolve()
+if not input_path.exists():
+  print(colorize("red", "Data folder input cannot be found: \033[1m" + str(input_path) + "\033[0m"))
   exit(1)
 
-classifier_conf = arguments['--classifier-conf'] if arguments['--classifier-conf'] else "0"
+data_file_path = input_path / (arguments['--input-name']) if arguments['--input-name'] else input_path / "data.csv"
+tiff_path = input_path / (arguments['--img-dir']) if arguments['--img-dir'] else (input_path / ("../images/")).resolve()
 
-max_processes = int(arguments['--max-processes']) if arguments['--max-processes'] else 4
+classifier_conf = arguments['--classifier-conf'] if arguments['--classifier-conf'] else False
 
 skip_graphs = bool(arguments['--skip-graphs']) if arguments['--skip-graphs'] else False
 skip_filtered = bool(arguments['--skip-filtered']) if arguments['--skip-filtered'] else False
 
-classifier_path = (ROOT_PATH / ("classifiers/" + classifier + ".py")).resolve()
-output_path     = (ROOT_PATH / ("validate/output/" + classifier)).resolve()
-output_path.mkdir(exist_ok=True)
+# Get paths
+classifier_path = (ROOT_PATH / ("classifiers/" + classifier_name + ".py")).resolve()
+output_path     = (ROOT_PATH / ("validate/output/" + classifier_name)).resolve()
+
+### Get our classifier
+if not (ROOT_PATH / ("classifiers/" + classifier_name + ".py")).exists():
+  print(colorize("red", "No such classifier exists"))
+
+classifier = import_module("classifiers." + classifier_name)
 
 ### Run prediction
-print("Running classifier \033[1m" + classifier + "\033[0m...")
-results_path = (output_path).resolve()
-cmd = [
-  "python",
-  str(classifier_path),
-  str(data_file_path),
-  str(results_path),
-  "--conf=" + classifier_conf,
-  "--max-processes=" + str(max_processes),
-  "--skip-graphs=" + str(skip_graphs)
-]
-try:
-  subprocess.check_call(cmd)
-except:
-  print(colorize("red", "Could not run classifier \033[1m" + classifier + "\033[0m"))
-  exit(1)
+print("Running classifier \033[1m" + classifier_name + "\033[0m...")
 
-### Read our predicted data
-results_file_path = output_path / "results.csv"
-data = pd.read_csv(str(results_file_path), header=0, dtype={ 'particle_id': str })
+data = pd.read_csv(str(data_file_path), header=0, dtype={ 'particle_id': str })
 
-def get_cell_stats(p_data, skip_filtered):
-  data_set = p_data['data_set'].iloc[0]
-  particle_id = p_data['particle_id'].iloc[0]
-
-  result = pd.DataFrame({
-    'data_set': [ data_set ],
-    'particle_id': [ particle_id ]
-  })
-  
-  if skip_filtered and 'filtered' in p_data.columns:
-    p_data = p_data.loc[(p_data['filtered'] == 0)]
-
-  for event,name in STATS_EVENT_MAP.items():
-    result['pred' + event] = True if event in p_data['event'].unique() else False
-    result['true' + event] = True if event in p_data['true_event'].unique() else False
-
-  return result
-
-def get_summary_table(results, data_set):
-  names = []
-  nums_corr_positive = []
-  nums_pred_positive = []
-  nums_true_positive = []
-  nums_corr_negative = []
-  nums_pred_negative = []
-  nums_true_negative = []
-  
-  for event,name in STATS_EVENT_MAP.items():
-    names.append(name)
-    nums_corr_positive.append(results[((results['pred' + event] == True) & (results['true' + event] == True))].shape[0])
-    nums_pred_positive.append(results[((results['pred' + event] == True))].shape[0])
-    nums_true_positive.append(results[((results['true' + event] == True))].shape[0])
-    nums_corr_negative.append(results[((results['pred' + event] == False) & (results['true' + event] == False))].shape[0])
-    nums_pred_negative.append(results[((results['pred' + event] == False))].shape[0])
-    nums_true_negative.append(results[((results['true' + event] == False))].shape[0])
-  
-  summary = pd.DataFrame({
-    'data_set': [data_set] * len(names),
-    'event': names,
-    'num_corr_positive': nums_corr_positive,
-    'num_pred_positive': nums_pred_positive,
-    'num_true_positive': nums_true_positive,
-    'num_corr_negative': nums_corr_negative,
-    'num_pred_negative': nums_pred_negative,
-    'num_true_negative': nums_true_negative
-  })
-
-  return summary
+classified_data = classifier.run(data, classifier_conf)
 
 def prettify_summary_table(summary):
   data_sets = []
@@ -160,20 +100,20 @@ def prettify_summary_table(summary):
   for index,row in summary.iterrows():
     accuracy = (row['num_corr_positive'] + row['num_corr_negative'])/(row['num_true_positive'] + row['num_true_negative'])
     true_positive_rate = row['num_corr_positive']/row['num_true_positive'] if row['num_true_positive'] > 0 else 0
-    false_positive_rate = 1-true_positive_rate if true_positive_rate > 0 else 0
     true_negative_rate = row['num_corr_negative']/row['num_true_negative'] if row['num_pred_negative'] > 0 else 0
-    false_negative_rate = 1-true_negative_rate if true_negative_rate > 0 else 0
+    false_positive_rate = 1-true_negative_rate
+    false_negative_rate = 1-true_positive_rate
     ppv_rate = row['num_corr_positive']/row['num_pred_positive'] if row['num_pred_positive'] > 0 else 0
     npv_rate = row['num_corr_negative']/row['num_pred_negative'] if row['num_pred_negative'] > 0 else 0
-    fdr_rate = 1-ppv_rate if ppv_rate > 0 else 0
+    fdr_rate = 1-ppv_rate
 
     events.append(row['event'])
     data_sets.append(row['data_set'])
     accuracies.append("{:.2%}".format(accuracy))
     true_positives.append("{:.2%} ({}/{})".format(true_positive_rate, row['num_corr_positive'], row['num_true_positive']))
-    false_positives.append("{:.2%} ({}/{})".format(false_positive_rate, (row['num_true_positive']-row['num_corr_positive']), row['num_true_positive']))
+    false_positives.append("{:.2%} ({}/{})".format(false_positive_rate, (row['num_pred_positive']-row['num_corr_positive']), row['num_true_negative']))
     true_negatives.append("{:.2%} ({}/{})".format(true_negative_rate, row['num_corr_negative'], row['num_true_negative']))
-    false_negatives.append("{:.2%} ({}/{})".format(false_negative_rate, (row['num_true_negative']-row['num_corr_negative']), row['num_true_negative']))
+    false_negatives.append("{:.2%} ({}/{})".format(false_negative_rate, (row['num_pred_negative']-row['num_corr_negative']), row['num_true_positive']))
     ppv.append("{:.2%}, ({}/{})".format(ppv_rate, row['num_corr_positive'], row['num_pred_positive']))
     npv.append("{:.2%}, ({}/{})".format(npv_rate, row['num_corr_negative'], row['num_pred_negative']))
     fdr.append("{:.2%}, ({}/{})".format(fdr_rate, (row['num_pred_positive']-row['num_corr_positive']), row['num_pred_positive']))
@@ -219,8 +159,8 @@ def apply_parallel(grouped, fn, *args):
   return chunk
 
 if __name__ == '__main__':
-  print("Scoring classifier \033[1m" + classifier + "\033[0m...")
-  results = apply_parallel(data.groupby([ 'data_set', 'particle_id' ]), get_cell_stats, skip_filtered)
+  print("Scoring classifier \033[1m" + classifier_name + "\033[0m...")
+  results = apply_parallel(classified_data.groupby([ 'data_set', 'particle_id' ]), get_cell_stats, skip_filtered)
   results = pd.concat(results)
 
   headers = [
@@ -252,8 +192,23 @@ if __name__ == '__main__':
 
   summary_table = pd.concat(summary_table)
 
-  summary_table.to_csv(str(results_path / "summary.csv"), header=True, encoding='utf-8', index=None)
-  results.to_csv(str(results_path / "cell-results.csv"), header=True, encoding='utf-8', index=None)
+  output_path.mkdir(exist_ok=True)
+  summary_table.to_csv(str(output_path / "summary.csv"), header=True, encoding='utf-8', index=None)
+  results.to_csv(str(output_path / "cell-results.csv"), header=True, encoding='utf-8', index=None)
+
+  output_file_path = (output_path / "results.csv").resolve()
+  classified_data.to_csv(str(output_file_path), header=True, encoding='utf-8', index=None)
+
+  if not skip_graphs:
+    cmd = [
+      "python",
+      str(QA_PATH),
+      classifier_name,
+      output_file_path,
+      str(output_path),
+      "--img-dir=" + str(tiff_path)
+    ]
+    subprocess.call(cmd)
 
 exit()
 
