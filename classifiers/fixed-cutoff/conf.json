@@ -1,0 +1,19 @@
+{
+  "median_cutoff": -6.666667e-02,
+  "area_cutoff": -2.220446e-16,
+
+  "confident_median_cutoff": -0.08222223,
+  "neighbor_cutoff": 66.66667,
+
+  "sum_cutoff": -6.666667e-02,
+
+  "baseline_median_scale_factor": 0.92,
+
+  "recoveries": {
+    "R": "E"
+  },
+
+  "sliding_window_width": 767,
+  "sliding_window_step": 235,
+  "convergence_limit": 0.00003
+}

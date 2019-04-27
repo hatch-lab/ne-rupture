@@ -27,12 +27,10 @@ from common.version import get_version
 
 import numpy as np
 import pandas as pd
-import csv
-import cv2
 from pathlib import Path
-import uuid
 from errors.UnexpectedEOFException import UnexpectedEOFException
 from scipy import interpolate
+from scipy import spatial
 from statsmodels.tsa.stattools import kpss
 from PIL import Image
 
@@ -313,6 +311,41 @@ data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'normalized
 data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'normalized_sum', 'sum')
 data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'x', 'x')
 data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'y', 'y')
+
+
+### Find nearest neighbors
+def find_nearest_neighbor_distances(f_data):
+  """
+  Get the nearest neighbors and distances for each particle_id
+
+  Given a dataframe for a given frame/data_set pair, will find the
+  nearest neighbor and its distance, using a KDTree
+
+  Arguments:
+    f_data Pandas DataFrame The dataframe
+
+  Returns:
+    Pands DataFrame The dataframe with the additional columns
+  """
+  # Build coordinate list
+  x = f_data['x'].tolist()
+  y = f_data['y'].tolist()
+  
+  coords = list(zip(x, y))
+
+  # Build KDTree
+  tree = spatial.KDTree(coords)
+
+  res = tree.query([ coords ], k=2)
+  distances = res[0][...,1][0]
+  idxs = res[1][...,1][0]
+  neighbor_ids = f_data['particle_id'].iloc[idxs].tolist()
+  f_data['nearest_neighbor'] = neighbor_ids
+  f_data['nearest_neighbor_distance'] = distances
+
+  return f_data
+
+data = data.groupby([ 'data_set', 'frame' ]).apply(find_nearest_neighbor_distances)
 
 
 ### Make particle IDs less… long. This assumes we won't have more than 999 particles in a video.

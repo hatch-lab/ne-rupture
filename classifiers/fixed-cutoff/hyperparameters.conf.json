@@ -1,0 +1,4 @@
+{
+  "m_neighbor_cutoff": [ 0, 10000 ],
+  "sum_cutoff": [ -1, 1 ]
+}

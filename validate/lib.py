@@ -7,7 +7,20 @@ STATS_EVENT_MAP = {
   "X": "Apoptosis"
 }
 
-def get_cell_stats(p_data, skip_filtered):
+def get_cell_stats(p_data, skip_filtered=False):
+  """
+  Returns stats on a cell-by-cell basis
+
+  Returns if a cell has ever undergone a given event. Will ignore frames
+  that have a filtered column set to True, if skip_filtered is given
+
+  Arguments:
+    p_data Panda DataFrame The particle data
+    skip_filtered bool Whether to ignore filtered records
+
+  Returns:
+    Panda DataFrame Cell-by-cell data frame
+  """
   data_set = p_data['data_set'].iloc[0]
   particle_id = p_data['particle_id'].iloc[0]
 
@@ -26,6 +39,19 @@ def get_cell_stats(p_data, skip_filtered):
   return result
 
 def get_summary_table(results, data_set):
+  """
+  Returns a performance summary
+
+  Using cell-by-cell data, will give a number of metrics that can
+  be used for evaluating performace.
+
+  Arguments:
+    results Panda DataFrame The cell-by-cell data frame from get_cell_stats
+    data_set string The data set name to associate with this data
+
+  Returns:
+    Panda DataFrame Performance data frame
+  """
   names = []
   nums_corr_positive = []
   nums_pred_positive = []
