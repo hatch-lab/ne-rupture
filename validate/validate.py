@@ -114,9 +114,9 @@ def prettify_summary_table(summary):
     false_positives.append("{:.2%} ({}/{})".format(false_positive_rate, (row['num_pred_positive']-row['num_corr_positive']), row['num_true_negative']))
     true_negatives.append("{:.2%} ({}/{})".format(true_negative_rate, row['num_corr_negative'], row['num_true_negative']))
     false_negatives.append("{:.2%} ({}/{})".format(false_negative_rate, (row['num_pred_negative']-row['num_corr_negative']), row['num_true_positive']))
-    ppv.append("{:.2%}, ({}/{})".format(ppv_rate, row['num_corr_positive'], row['num_pred_positive']))
-    npv.append("{:.2%}, ({}/{})".format(npv_rate, row['num_corr_negative'], row['num_pred_negative']))
-    fdr.append("{:.2%}, ({}/{})".format(fdr_rate, (row['num_pred_positive']-row['num_corr_positive']), row['num_pred_positive']))
+    ppv.append("{:.2%} ({}/{})".format(ppv_rate, row['num_corr_positive'], row['num_pred_positive']))
+    npv.append("{:.2%} ({}/{})".format(npv_rate, row['num_corr_negative'], row['num_pred_negative']))
+    fdr.append("{:.2%} ({}/{})".format(fdr_rate, (row['num_pred_positive']-row['num_corr_positive']), row['num_pred_positive']))
 
   pretty = pd.DataFrame({
     'data_set': data_sets,
