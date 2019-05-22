@@ -119,8 +119,8 @@ while(this_frame_i <= end_frame_i):
   else:
     raw_frame = cv2.imread(str(frame_path), cv2.IMREAD_GRAYSCALE)
 
-    x = int(round(coords['x'].iloc[0]*coords['x_conversion'].iloc[0]))
-    y = int(round(coords['y'].iloc[0]*coords['y_conversion'].iloc[0]))
+    x = int(round(coords['x'].iloc[0]/coords['x_conversion'].iloc[0]))
+    y = int(round(coords['y'].iloc[0]/coords['y_conversion'].iloc[0]))
 
     # Crop down to just this particle
     frame = hatchvid.crop_frame(raw_frame, x, y, width, height)

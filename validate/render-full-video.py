@@ -27,7 +27,6 @@ from common.version import get_version
 
 import numpy as np
 import pandas as pd
-import csv
 import cv2
 import math
 import re
@@ -119,8 +118,8 @@ while(this_frame_i <= end_frame_i):
 
     for index, row in frame_data.iterrows():
       particle_id = row['particle_id']
-      x = int(round(row['x']*row['x_conversion']))
-      y = int(round(row['y']*row['y_conversion']))
+      x = int(round(row['x']/row['x_conversion']))
+      y = int(round(row['y']/row['y_conversion']))
       event = row['event']
 
       # Add particle_id
