@@ -5,11 +5,10 @@
 Takes Imaris output files and generates a combined dataframe with normalized and scaled values.
 
 Usage:
-  imaris-postprocessor.py INPUT_DIR OUTPUT_DIR [--frame-rate=180] [--img-dir=None] [--data-set=None]
+  imaris-postprocessor.py INPUT_DIR [--frame-rate=180] [--img-dir=None] [--data-set=None]
 
 Arguments:
   INPUT_DIR Path to Imaris data sheets
-  OUTPUT_DIR Path to output predictions and videos (if selected)
 
 Options:
   --data-set=<string> [defaults: Name of INPUT/../] The data set indicator
@@ -17,7 +16,7 @@ Options:
   --frame-rate=<int> [defaults: 180] The seconds that elapse between frames
 
 Output:
-  Writes a CSV to OUTPUT_DIR with post-processed data and JSON file with meta-data
+  Writes a CSV to INPUT_DIR with post-processed data and JSON file with meta-data
 """
 import sys
 import os
@@ -40,7 +39,7 @@ Arguments and inputs
 arguments = docopt(__doc__, version=get_version())
 
 input_path = Path(arguments['INPUT_DIR']).resolve()
-output_path = Path(arguments['OUTPUT_DIR']).resolve()
+output_path = Path(arguments['INPUT_DIR']).resolve()
 tiff_path = input_path / (arguments['--img-dir']) if arguments['--img-dir'] else (input_path / ("../images/")).resolve()
 frame_rate = int(arguments['--frame-rate']) if arguments['--frame-rate'] else 180
 gid = arguments['--data-set'] if arguments['--data-set'] else (input_path / "../").resolve().name
@@ -135,7 +134,7 @@ for name,csv_info in data_files.items():
     if not found_header:
       raise UnexpectedEOFException("Reached end of " + csv_info['file'] + " without finding headers.")
 
-    this_df = pd.read_csv(f, header=None, names=headers)
+    this_df = pd.read_csv(f, header=None, names=headers, dtype={ 'TrackID': str })
     this_df = this_df[csv_info['data_cols']]
     if(data is None):
       data = this_df
@@ -348,9 +347,9 @@ def find_nearest_neighbor_distances(f_data):
 data = data.groupby([ 'data_set', 'frame' ]).apply(find_nearest_neighbor_distances)
 
 
-### Make particle IDs less… long. This assumes we won't have more than 999 particles in a video.
-data['particle_id'] = data['particle_id'].str.replace("1000000", "")
-
+### Make particle IDs less… long.
+data['particle_id'] = data['particle_id'].str.replace(r"^1[0]+", "")
+data['particle_id'] = data['particle_id'].str.replace(r"^$", "000")
 
 ### Write out the files
 output_path.mkdir(mode=0o755, parents=True, exist_ok=True)

@@ -7,7 +7,7 @@ Takes raw TIFF images and makes them amenable for feature extraction by Imaris.
 Will generate individual TIFFs and a TIFF-stack.
 
 Usage:
-  imaris-preprocessor.py INPUT OUTPUT [--filter-window=5.0] [--gamma=0.50] [--channel=2] [--objective=20] [--microscope=SD] [--data-set=None] [--pixel-size=None]
+  imaris-preprocessor.py INPUT OUTPUT [--filter-window=5.0] [--gamma=0.50] [--channel=2] [--objective=20] [--microscope=SD] [--data-set=None] [--pixel-size=None] [--rolling-ball-size=30]
 
 Arguments:
   INPUT Path to TIFF image sequence; include the trailing slash
@@ -21,6 +21,7 @@ Options:
   --microscope=<string> [defaults: SD] "SPE" or "SD"
   --data-set=<string|falsey> [defaults: None] The unique identifier for this data set. If none is supplied, the base file name of each TIFF will be used.
   --pixel-size=<int|0> [defaults: 0] Specifying microscope and objective will automatically determine pixel size. If supplied here, that value will be used instead.
+  --rolling-ball-size=<int> [defaults: 30] The rolling ball diameter to use for rolling ball subtraction, in um
 """
 import sys
 import os

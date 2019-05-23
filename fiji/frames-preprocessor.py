@@ -5,7 +5,7 @@
 Uses Jython, FIJI's Python2 interpreter. Note: This is --->Python2<--. The rest of this library uses Python3.
 
 Usage:
-  frames-preprocessor.py INPUT OUTPUT [--filter-window=5.0] [--gamma=0.50] [--channel=2] [--objective=20] [--microscope=SPE] [--data-set=0] [--pixel-size=0]
+  frames-preprocessor.py INPUT OUTPUT [--filter-window=5.0] [--gamma=0.50] [--channel=2] [--objective=20] [--microscope=SPE] [--data-set=0] [--pixel-size=0] [--rolling-ball-size=30]
 
 Arguments:
   INPUT Path to the TIFF files to process; include the trailing slash
@@ -19,6 +19,7 @@ Options:
   --microscope=<string> [defaults: SPE] "SPE" or "SD"
   --data-set=<string|falsey> [defaults: None] The unique identifier for this data set. If none is supplied, the base file name of each TIFF will be used.
   --pixel-size=<int|0> [defaults: 0] Specifying microscope and objective will automatically determine pixel size. If supplied here, that value will be used instead.
+  --rolling-ball-size=<int> [defaults: 30] The rolling ball diameter to use for rolling ball subtraction, in um
 """
 import sys
 import os
@@ -50,6 +51,7 @@ objective = int(arguments['--objective']) if arguments['--objective'] else 20
 microscope = arguments['--microscope'] if arguments['--microscope'] else "SD"
 folder_name = arguments['--data-set'] if arguments['--data-set'] else None
 pixel_size = int(arguments['--pixel-size']) if arguments['--pixel-size'] else None
+rolling_ball_size = int(arguments['--rolling-ball-size']) if arguments['--pixel-size'] else 30
 
 channel_splitter = ChannelSplitter()
 contrast_enhancer = ContrastEnhancer()
@@ -104,7 +106,7 @@ for file in files:
 
   bg_subtractor = BackgroundSubtracter()
   bg_subtractor.setup("", frame)
-  bg_subtractor.rollingBallBackground(processor, 30/pixel_size, False, False, False, False, True)
+  bg_subtractor.rollingBallBackground(processor, rolling_ball_size/pixel_size, False, False, False, False, True)
 
   frame = ImagePlus("Frame " + str(frame_i), processor)
 
