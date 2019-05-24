@@ -64,6 +64,7 @@ conf = json.loads(arguments['--conf']) if arguments['--conf'] else False
 ### Get our classifier
 if not (ROOT_PATH / ("classifiers/" + classifier_name + ".py")).exists():
   print(colorize("red", "No such classifier exists"))
+  exit(1)
 
 classifier = import_module("classifiers." + classifier_name)
 
