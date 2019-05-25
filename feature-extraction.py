@@ -42,6 +42,7 @@ import numpy as np
 import cv2
 from skimage import measure, morphology, color, filters, segmentation, feature, util
 from scipy import ndimage as ndi
+from scipy import stats
 
 ### Constants
 PREPROCESSOR_PATH  = (ROOT_PATH / ("fiji/frames-preprocessor.py")).resolve()
@@ -91,19 +92,137 @@ cmd = [
 frame_paths = [ x for x in raw_path.glob("*.tif") ]
 frame_paths.sort()
 
-
 # Masking frames
 m_frame_paths = [ x for x in (processed_path / data_set).glob("*.tif") ]
 m_frame_paths.sort()
-threshold = None
 
-for i,m_frame_path in enumerate(m_frame_paths):
-  frame = cv2.imread(str(frame_paths[i]), cv2.IMREAD_GRAYSCALE)
-  m_frame = cv2.imread(str(m_frame_path), cv2.IMREAD_GRAYSCALE)
+# From https://github.com/jordan-g/Calcium-Imaging-Analysis/blob/master/imimposemin.py
+def imimposemin(I, BW, conn=None, max_value=255):
+  if not I.ndim in (2, 3):
+    raise Exception("'I' must be a 2-D or 3D array.")
 
-  if threshold is None:
-    threshold = filters.threshold_yen(m_frame)
+  if BW.shape != I.shape:
+    raise Exception("'I' and 'BW' must have the same shape.")
 
+  if BW.dtype is not bool:
+    BW = BW != 0
+
+  # set default connectivity depending on whether the image is 2-D or 3-D
+  if conn == None:
+    if I.ndim == 3:
+      conn = 26
+    else:
+      conn = 8
+  else:
+    if conn in (4, 8) and I.ndim == 3:
+      raise Exception("'conn' is invalid for a 3-D image.")
+    elif conn in (6, 18, 26) and I.ndim == 2:
+      raise Exception("'conn' is invalid for a 2-D image.")
+
+  # create structuring element depending on connectivity
+  if conn == 4:
+    selem = morphology.disk(1)
+  elif conn == 8:
+    selem = morphology.square(3)
+  elif conn == 6:
+    selem = morphology.ball(1)
+  elif conn == 18:
+    selem = morphology.ball(1)
+    selem[:, 1, :] = 1
+    selem[:, :, 1] = 1
+    selem[1] = 1
+  elif conn == 26:
+    selem = morphology.cube(3)
+
+  fm = I.astype(float)
+
+  try:
+    fm[BW]                 = -math.inf
+    fm[np.logical_not(BW)] = math.inf
+  except:
+    fm[BW]                 = -float("inf")
+    fm[np.logical_not(BW)] = float("inf")
+
+  if I.dtype == float:
+    I_range = np.amax(I) - np.amin(I)
+
+    if I_range == 0:
+      h = 0.1
+    else:
+      h = I_range*0.001
+  else:
+    h = 1
+
+  fp1 = I + h
+
+  g = np.minimum(fp1, fm)
+
+  # perform reconstruction and get the image complement of the result
+  if I.dtype == float:
+    J = morphology.reconstruction(1 - fm, 1 - g, selem=selem)
+    J = 1 - J
+  else:
+    J = morphology.reconstruction(255 - fm, 255 - g, method='dilation', selem=selem)
+    J = 255 - J
+
+  try:
+    J[BW] = -math.inf
+  except:
+    J[BW] = -float("inf")
+
+  return J
+
+def segment_by_julien(m_frame):
+  threshold = filters.threshold_yen(m_frame)
+  th_frame = m_frame.copy()
+  th_frame[(th_frame < threshold)] = 0
+
+  # m_frame[(m_frame < threshold)] = 0
+  # th_frame = cv2.threshold(m_frame, threshold, 255, cv2.THRESH_BINARY)[1]
+
+  disk = morphology.disk(8)
+  frame_eroded = morphology.erosion(th_frame, disk)
+  frame_recon = morphology.reconstruction(seed=frame_eroded, mask=th_frame, method='dilation')
+  frame_dilated = morphology.dilation(frame_recon, disk)
+  frame_recon2 = morphology.reconstruction(seed=frame_dilated, mask=frame_recon, method='erosion')
+
+  # Foreground detection
+  kernel = np.zeros((3, 3))
+  kernel[0,1] = 1
+  kernel[1,] = 1
+  kernel[2,1] = 1
+  foreground = feature.peak_local_max(frame_recon2, footprint=kernel, indices=False, exclude_border=False).astype('uint8')
+  
+  disk = morphology.disk(1)
+  foreground = morphology.closing(foreground, disk)
+  foreground = morphology.erosion(foreground, disk)
+  # If we pass an array of ints, remove_small_objects thinks they are *labels* not *values*
+  morphology.remove_small_objects(foreground.astype('bool'), min_size=50, connectivity=2, in_place=True)
+  _, labeled_fg = cv2.connectedComponents(foreground.astype(np.uint8))
+
+  # Background detection
+  threshold = filters.threshold_yen(frame_recon2)
+  bin_frame = cv2.threshold(frame_recon2, threshold, 255, cv2.THRESH_BINARY)[1]
+  D = ndi.distance_transform_edt(bin_frame)
+  D_labels = segmentation.watershed(D)
+  background = (D_labels == 0).astype('uint8')
+
+  sobelx = cv2.Sobel(m_frame, cv2.CV_64F, 1, 0, ksize=3)
+  sobely = cv2.Sobel(m_frame, cv2.CV_64F, 0, 1, ksize=3)
+  gradient = np.sqrt(sobelx**2 + sobely**2)
+  gradient = 255*(gradient - np.min(gradient)) / (np.max(gradient) - np.min(gradient))
+  gradient = imimposemin(gradient, np.bitwise_or(background, foreground))
+
+  labels = segmentation.watershed(gradient, labeled_fg)
+
+  remove = stats.mode(labels)[0][0][0]
+  labels_2 = labels.copy()
+  segmentation.clear_border(labels_2, in_place=True)
+  labels_2[labels == remove] = 0
+
+  return labels_2
+
+def segment_by_lucian(m_frame, threshold):
   m_frame[(m_frame < threshold)] = 0
   th_frame = cv2.threshold(m_frame, threshold, 255, cv2.THRESH_BINARY)[1]
 
@@ -120,74 +239,26 @@ for i,m_frame_path in enumerate(m_frame_paths):
   gradient = filters.rank.gradient(m_frame, morphology.disk(2))
   labels = segmentation.watershed(gradient, markers)
 
-  label_image = measure.label(labels)
-  image_label_overlay = color.label2rgb(label_image, image=m_frame)
+  return labels
 
-  cv2.imshow('open_frame', image_label_overlay)
+threshold = None
+for i,m_frame_path in enumerate(m_frame_paths):
+  frame = cv2.imread(str(frame_paths[i]), cv2.IMREAD_GRAYSCALE)
+  m_frame = cv2.imread(str(m_frame_path), cv2.IMREAD_GRAYSCALE)
 
-  # # Find the threshold used to binarize image
-  # if threshold is None:
-  #   threshold = filters.threshold_yen(m_frame)
+  if threshold is None:
+    threshold = filters.threshold_yen(m_frame)
+
+  j_labels = segment_by_julien(m_frame)
+  l_labels = segment_by_lucian(m_frame, threshold)
   
-  # th_frame = cv2.threshold(m_frame, threshold, 255, cv2.THRESH_BINARY)[1]
-  # seg_frame = morphology.opening(m_frame, morphology.disk(8))
-  # seg_frame = morphology.erosion(seg_frame, morphology.disk(8))
-  # seg_frame = morphology.reconstruction(seg_frame, th_frame)
+  label_image = measure.label(j_labels)
+  image_label_overlay_j = color.label2rgb(label_image, image=m_frame)
+  cv2.imshow('Julien', image_label_overlay_j)
 
-  # distance = ndi.distance_transform_edt(th_frame)
-  # local_max = feature.peak_local_max(distance, labels=seg_frame, indices=False, min_distance=30)
-
-  # markers = ndi.label(local_max, structure=np.ones((3, 3)))[0]
-  # labels = segmentation.watershed(-distance, markers, mask=seg_frame)
-
-  # label_image = measure.label(labels)
-  # image_label_overlay = color.label2rgb(label_image, image=m_frame)
-
-  # cv2.imshow('open_frame', seg_frame)
-
-
-  # th_frame = morphology.closing(m_frame > threshold, morphology.square(3))
-  # distance = ndi.distance_transform_edt(th_frame)
-  # local_maxi = feature.peak_local_max(
-  #   distance, 
-  #   indices=False, 
-  #   footprint=np.ones((3, 3)), 
-  #   labels=th_frame
-  # )
-  # markers = ndi.label(local_maxi)[0]
-  # cleared = segmentation.watershed(-distance, markers, mask=th_frame)
-
-  # label_image = measure.label(cleared)
-  # image_label_overlay = color.label2rgb(label_image, image=m_frame)
-  # cv2.imshow('image_label_overlay',image_label_overlay)
-
-  # for region in measure.regionprops(label_image):
-  #   if region.area >= 100/pixel_size:
-  #     print(region.centroid)
-
-  # threshold,th_frame = cv2.threshold(m_frame, 30, 255, cv2.THRESH_BINARY)
-
-  # laplacian = cv2.Laplacian(th_frame,cv2.CV_8U)
-  # edges = filters.sobel(th_frame)
-  # # threshold,filtered = cv2.threshold(edges, 0.01, 255, cv2.THRESH_BINARY)
-  # edges = edges*255
-  # edges = edges.astype(np.uint8)
-  # # filtered = np.where(edges>0.0001,255,0)
-  # # print(np.nonzero(filtered))
-
-  # temp, contours, hierarchy = cv2.findContours(edges, mode=cv2.RETR_EXTERNAL, method=cv2.CHAIN_APPROX_NONE)
-
-  # nuclei = np.zeros(( th_frame.shape[0], th_frame.shape[1]), np.uint8)
-  # nuclei = cv2.drawContours(nuclei, contours, -1, 255, thickness=cv2.FILLED)
-  # labels = label(nuclei)
-  # particle_props = regionprops(labels)
-
-  # for particle_prop in particle_props:
-  #   print(particle_prop.centroidarray)
-
-  # cv2.imshow('m_frame',m_frame)
-  # cv2.imshow('edges',edges)
-  # cv2.imshow('nuclei',nuclei)
+  label_image = measure.label(l_labels)
+  image_label_overlay_l = color.label2rgb(label_image, image=m_frame)
+  cv2.imshow('Lucian', image_label_overlay_l)
 
   c = cv2.waitKey(0)
   if 'q' == chr(c & 255):
