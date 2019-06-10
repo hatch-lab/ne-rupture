@@ -7,7 +7,7 @@ Takes raw TIFF images and extracts features
 Will generate individual TIFFs.
 
 Usage:
-  imaris-preprocessor.py INPUT [--filter-window=5.0] [--gamma=0.50] [--channel=2] [--objective=20] [--microscope=SD] [--data-set=0] [--pixel-size=0] [--rolling-ball-size=30] [--img-dir=0]
+  imaris-preprocessor.py INPUT [--frame-rate=180] [--filter-window=5.0] [--gamma=0.50] [--channel=2] [--objective=20] [--microscope=SD] [--data-set=0] [--pixel-size=0] [--rolling-ball-size=30] [--img-dir=0]
 
 
 Arguments:
@@ -23,6 +23,7 @@ Options:
   --data-set=<string|falsey> [defaults: None] The unique identifier for this data set. If none is supplied, the base file name of each TIFF will be used.
   --pixel-size=<int|0> [defaults: 0] Specifying microscope and objective will automatically determine pixel size. If supplied here, that value will be used instead.
   --rolling-ball-size=<int> [defaults: 30] The rolling ball diameter to use for rolling ball subtraction, in um
+  --frame-rate=<int> [defaults: 180] The seconds that elapse between frames
 """
 import sys
 import os
@@ -37,19 +38,24 @@ from common.version import get_version
 from common.output import colorize
 import common.video as hatchvid
 
+import cv2
+import pandas as pd
+
 import subprocess
 from multiprocessing import Pool, cpu_count
 
-import progressbar
+from tqdm import tqdm
 from time import sleep
 
-from feature_extraction import watershed
+from feature_extraction import watershed, tracks
 
 ### Constants
 PREPROCESSOR_PATH  = (ROOT_PATH / ("fiji/frames-preprocessor.py")).resolve()
 FIJI_PATH          = Path("/Applications/Fiji.app/Contents/MacOS/ImageJ-macosx").resolve()
 HEIGHT             = 100
 WIDTH              = 100
+
+MAKE_VIDEO_PATH        = (ROOT_PATH / ("validate/render-full-video.py")).resolve()
 
 ### Arguments and inputs
 arguments = docopt(__doc__, version=get_version())
@@ -60,6 +66,7 @@ csv_path = output_path / "data-no-imaris.csv"
 raw_path = (input_path / ("images/raw")).resolve()
 processed_path = (input_path / (arguments['--img-dir'])) if arguments['--img-dir'] else (input_path / "images").resolve()
 data_set = arguments['--data-set'] if arguments['--data-set'] else (input_path).resolve().name
+frame_rate = arguments['--frame-rate'] if arguments['--frame-rate'] else 180
 
 filter_window = float(arguments['--filter-window']) if arguments['--filter-window'] else 5.0
 gamma = float(arguments['--gamma']) if arguments['--gamma'] else 0.50
@@ -69,17 +76,16 @@ microscope = arguments['--microscope'] if arguments['--microscope'] else "SD"
 pixel_size = arguments['--pixel-size'] if arguments['--pixel-size'] else 1
 rolling_ball_size = int(arguments['--rolling-ball-size']) if arguments['--pixel-size'] else 30
 
-def apply_parallel(frame_paths, m_frame_paths, fn, *args):
+def apply_parallel(grouped,  fn, *args):
   """
-  Function for parallelizing frame processing
+  Function for parallelizing grouped Pandas data
 
-  Will take each raw/processed frame and pass 
+  Will take each DataFrame produced by grouping and pass 
   that data to the provided function, along with the 
   supplied arguments.
 
   Arguments:
-    frame_paths list List of frame paths
-    m_frame_paths list List of processed frame paths
+    grouped list List of grouped particle data
     fn function The function called with a group as a parameter
     args Arguments to pass through to fn
 
@@ -87,26 +93,30 @@ def apply_parallel(frame_paths, m_frame_paths, fn, *args):
     Pandas DataFrame The re-assembled data.
   """
 
+  total_groups = len(grouped)
+
   with Pool(cpu_count()) as p:
     groups = []
-    for i, frame_path in enumerate(frame_paths):
-      frame = cv2.imread(str(frame_path), cv2.IMREAD_GRAYSCALE)
-      m_frame = cv2.imread(str(m_frame_paths[i]), cv2.IMREAD_GRAYSCALE)
-      t = tuple([ i, frame, m_frame ]) + tuple(args)
+    for name, group in grouped:
+      if isinstance(group, tuple):
+        t = group + tuple(args)
+      else:
+        t = tuple([ group ]) + tuple(args)
       groups.append(t)
     rs = p.starmap_async(fn, groups)
+    total = rs._number_left
+    num_finished = 0
 
-    widgets=[
-      ' [', progressbar.Timer(), '] ',
-      progressbar.AnimatedMarker()
-    ]
+    with tqdm(total=total, ncols=90, bar_format='{l_bar}{bar}| [{elapsed}<{remaining}]') as bar:
+      while not rs.ready():
+        sleep(0.1)
+        if total-rs._number_left != num_finished:
+          bar.update(total-rs._number_left-num_finished)
+          num_finished = total-rs._number_left
+        else:
+          bar.update(0)
 
-    bar = progressbar.ProgressBar(widgets=widgets)
-    bar.start()
-
-    while not rs.ready():
-      bar.update()
-      sleep(0.1)
+      bar.close()
 
   return pd.concat(rs.get(), sort=False)
 
@@ -140,8 +150,63 @@ frame_paths.sort()
 m_frame_paths = [ x for x in (processed_path / data_set).glob("*.tif") ]
 m_frame_paths.sort()
 
-print("Extracting features...")
-cells = apply_parallel(frame_paths, m_frame_paths, watershed.process_frame)
-output_path.mkdir(mode=0o755, parents=True, exist_ok=True)
+print("Reading frames...")
+frame_groups = []
 
+for i, frame_path in enumerate(tqdm(frame_paths, ncols=90, unit="frames")):
+  frame = cv2.imread(str(frame_path), cv2.IMREAD_GRAYSCALE)
+  m_frame = cv2.imread(str(m_frame_paths[i]), cv2.IMREAD_GRAYSCALE)
+  t = ( str(frame_path), ( pixel_size, data_set, (i+1), frame, m_frame ))
+  frame_groups.append(t)
+
+print("Extracting features...")
+cells = apply_parallel(frame_groups, watershed.process_frame)
+# cells = pd.read_csv(str(output_path) + "/data-no-imaris.orig.csv", dtype = { 'particle_id': str })
+
+print("Building tracks...")
+for i in cells['frame'].unique():
+  prev_idx = ( 
+    (cells['frame'] == (i-1)) & 
+    (cells['image_type'] == 'raw') & 
+    (cells['mask'] == 'nucleus')
+  )
+  this_idx = ( 
+    (cells['frame'] == i) & 
+    (cells['image_type'] == 'raw') & 
+    (cells['mask'] == 'nucleus') 
+  )
+  prev_frame = cells[prev_idx]
+  this_frame = cells[this_idx]
+
+  if len(prev_frame.index) < 1:
+    continue
+
+  if len(this_frame.index) < 1:
+    break
+
+  id_map = tracks.build_neighbor_map(prev_frame, this_frame, 50)
+  cells.loc[(cells['frame'] == i), 'particle_id'] = tracks.track_frame(id_map, cells.loc[( cells['frame'] == i ), :])
+
+cells['x_conversion'] = pixel_size
+cells['y_conversion'] = pixel_size
+cells['event'] = 'N'
+cells['frame_rate'] = frame_rate
+# Filter short tracks
+# cells = cells.groupby([ 'data_set', 'particle_id' ]).filter(lambda x: x['frame_rate'].iloc[0]*len(x) > 28800)
+
+print("Writing CSV...")
+output_path.mkdir(mode=0o755, parents=True, exist_ok=True)
 cells.to_csv(str(csv_path), header=True, encoding='utf-8', index=None)
+print("  Done")
+
+print("Making movie...")
+cmd = [
+  "python",
+  str(MAKE_VIDEO_PATH),
+  str(processed_path),
+  str(csv_path),
+  data_set,
+  str(output_path),
+  "--draw-tracks=1"
+]
+subprocess.call(cmd)

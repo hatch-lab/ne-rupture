@@ -10,6 +10,7 @@ sys.path.append(str(ROOT_PATH))
 
 from common.docopt import docopt
 
+import copy
 import numpy as np
 np.seterr(divide='ignore', invalid='ignore') # Occasional divide-by-zero warnings with regionprops
 import pandas as pd
@@ -17,6 +18,7 @@ import cv2
 from skimage import measure, morphology, color, filters, segmentation, feature, util
 from scipy import ndimage as ndi
 from scipy import stats
+from scipy import spatial
 
 # From https://github.com/jordan-g/Calcium-Imaging-Analysis/blob/master/imimposemin.py
 def imimposemin(I, BW, conn=None, max_value=255):
@@ -144,7 +146,8 @@ def segment_by_julien(m_frame, vse=8, vse2=1, bwao=50):
 
   return Ll
 
-def segment_by_lucian(m_frame, threshold):
+def segment_by_lucian(m_frame):
+  threshold = filters.threshold_otsu(m_frame)
   m_frame[(m_frame < threshold)] = 0
   th_frame = cv2.threshold(m_frame, threshold, 255, cv2.THRESH_BINARY)[1]
 
@@ -161,11 +164,13 @@ def segment_by_lucian(m_frame, threshold):
   gradient = filters.rank.gradient(m_frame, morphology.disk(2))
   labels = segmentation.watershed(gradient, markers)
 
+  segmentation.clear_border(labels, in_place=True)
+
   return labels
 
 def add_cell_props(cells, extra_info, props):
   cells['data_set'].append(extra_info['data_set'])
-  cells['particle_id'].append(props.label)
+  cells['particle_id'].append("{}.{}".format(extra_info['frame'], props.label))
   cells['image_type'].append(extra_info['image_type'])
   cells['mask'].append(extra_info['mask'])
   cells['frame'].append(extra_info['frame'])
@@ -201,7 +206,7 @@ def add_cell_props(cells, extra_info, props):
 
   return cells
 
-def process_frame(frame_num, frame, m_frame):
+def process_frame(pixel_size, data_set, frame_num, frame, m_frame):
   cells = {
     'data_set': [],
     'particle_id': [],
@@ -233,8 +238,33 @@ def process_frame(frame_num, frame, m_frame):
     'solidity': []
   }
 
+  base_info = {
+    'data_set': data_set,
+    'frame': frame_num,
+    'mask': 'nucleus',
+    'image_type': 'raw',
+    'pixel_size': pixel_size
+  }
+
   # Raw labelling
-  nuc_labels = segment_by_julien(m_frame)
+  # nuc_labels = segment_by_julien(m_frame)
+  nuc_labels = segment_by_lucian(m_frame)
+
+  # Fuse nearby regions
+  nuc_regions = measure.regionprops(nuc_labels, coordinates='rc')
+  # search = {
+  #   'id': list(),
+  #   'coords': list()
+  # }
+  # for region in nuc_regions:
+  #   search['id'].append(region.label)
+  #   search['coords'].append(( region.centroid[1]*pixel_size, region.centroid[0]*pixel_size ))
+
+  # id_map = get_neighbor_map(search, max_distance=50).dropna()
+  # id_map['ref_id'] = id_map['ref_id'].astype(int)
+
+  # for index, row in id_map.iterrows():
+  #   nuc_labels[nuc_labels == row['search_id']] = row['ref_id']
 
   # When nuclei are closer than the dilation, one will win
   cyto_labels = morphology.dilation(nuc_labels, morphology.disk(5))
@@ -286,4 +316,39 @@ def process_frame(frame_num, frame, m_frame):
     }
     cells = add_cell_props(cells, info, region)
 
-  return pd.DataFrame(cells)
+  cells = pd.DataFrame(cells)
+  cells['particle_id'] = cells['particle_id'].astype(str)
+
+  return cells
+
+def get_neighbor_map(ref_frame, search_frame=None, max_distance=80):
+  k = 1
+  # Build KDTree
+  tree = spatial.KDTree(ref_frame['coords'])
+
+  if search_frame is None:
+    search_frame = copy.deepcopy(ref_frame)
+    k = 2
+
+  res = tree.query([ search_frame['coords'] ], k=k, distance_upper_bound=max_distance)
+  if k == 2:
+    distances = res[0][...,1][0]
+    idxs = res[1][...,1][0]
+  else:
+    distances = res[0][0]
+    idxs = res[1][0]
+
+  neighbor_ids = ref_frame['id']
+  # Cases where we couldn't find a neighbor get idx of 
+  # one more than the number of items we have, and a 
+  # distance of inf
+  neighbor_ids.append(np.nan)
+  neighbor_ids = [ neighbor_ids[i] for i in idxs ]
+
+  id_map = pd.DataFrame({
+    'search_id': search_frame['id'],
+    'ref_id': neighbor_ids,
+    'distance': distances
+  })
+
+  return id_map
