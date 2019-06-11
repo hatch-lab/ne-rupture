@@ -46,8 +46,11 @@ from multiprocessing import Pool, cpu_count
 
 from tqdm import tqdm
 from time import sleep
+import io
 
-from feature_extraction import watershed, tracks
+import matlab.engine
+
+from feature_extraction import tracks
 
 ### Constants
 PREPROCESSOR_PATH  = (ROOT_PATH / ("fiji/frames-preprocessor.py")).resolve()
@@ -55,7 +58,9 @@ FIJI_PATH          = Path("/Applications/Fiji.app/Contents/MacOS/ImageJ-macosx")
 HEIGHT             = 100
 WIDTH              = 100
 
-MAKE_VIDEO_PATH        = (ROOT_PATH / ("validate/render-full-video.py")).resolve()
+MAKE_VIDEO_PATH    = (ROOT_PATH / ("validate/render-full-video.py")).resolve()
+MATLAB_PATH        = (ROOT_PATH / ("feature_extraction/matlab")).resolve()
+MATLAB             = matlab.engine.start_matlab()
 
 ### Arguments and inputs
 arguments = docopt(__doc__, version=get_version())
@@ -75,50 +80,6 @@ objective = int(arguments['--objective']) if arguments['--objective'] else 20
 microscope = arguments['--microscope'] if arguments['--microscope'] else "SD"
 pixel_size = arguments['--pixel-size'] if arguments['--pixel-size'] else 1
 rolling_ball_size = int(arguments['--rolling-ball-size']) if arguments['--pixel-size'] else 30
-
-def apply_parallel(grouped,  fn, *args):
-  """
-  Function for parallelizing grouped Pandas data
-
-  Will take each DataFrame produced by grouping and pass 
-  that data to the provided function, along with the 
-  supplied arguments.
-
-  Arguments:
-    grouped list List of grouped particle data
-    fn function The function called with a group as a parameter
-    args Arguments to pass through to fn
-
-  Returns:
-    Pandas DataFrame The re-assembled data.
-  """
-
-  total_groups = len(grouped)
-
-  with Pool(cpu_count()) as p:
-    groups = []
-    for name, group in grouped:
-      if isinstance(group, tuple):
-        t = group + tuple(args)
-      else:
-        t = tuple([ group ]) + tuple(args)
-      groups.append(t)
-    rs = p.starmap_async(fn, groups)
-    total = rs._number_left
-    num_finished = 0
-
-    with tqdm(total=total, ncols=90, bar_format='{l_bar}{bar}| [{elapsed}<{remaining}]') as bar:
-      while not rs.ready():
-        sleep(0.1)
-        if total-rs._number_left != num_finished:
-          bar.update(total-rs._number_left-num_finished)
-          num_finished = total-rs._number_left
-        else:
-          bar.update(0)
-
-      bar.close()
-
-  return pd.concat(rs.get(), sort=False)
 
 print("Processing TIFFs for mask-generation...")
 
@@ -143,37 +104,41 @@ cmd = [
 #   print(colorize("red", "Unable to process TIFFs"))
 #   exit(1)
 
-frame_paths = [ x for x in raw_path.glob("*.tif") ]
+def process_frames(frame_paths, m_frame_paths, output_path):
+  MATLAB.cd(str(MATLAB_PATH))
+
+  out = io.StringIO()
+  promise = MATLAB.process_video(frame_paths, m_frame_paths, output_path, background=True, stdout=out)
+  while(promise.done() is not True):
+    # print("Sup", out.getvalue())
+    sleep(0.1)
+
+  return promise.result()
+
+frame_paths = [ str(x) for x in raw_path.glob("*.tif") ]
 frame_paths.sort()
 
 # Masking frames
-m_frame_paths = [ x for x in (processed_path / data_set).glob("*.tif") ]
+m_frame_paths = [ str(x) for x in (processed_path / data_set).glob("*.tif") ]
 m_frame_paths.sort()
 
-print("Reading frames...")
-frame_groups = []
-
-for i, frame_path in enumerate(tqdm(frame_paths, ncols=90, unit="frames")):
-  frame = cv2.imread(str(frame_path), cv2.IMREAD_GRAYSCALE)
-  m_frame = cv2.imread(str(m_frame_paths[i]), cv2.IMREAD_GRAYSCALE)
-  t = ( str(frame_path), ( pixel_size, data_set, (i+1), frame, m_frame ))
-  frame_groups.append(t)
-
 print("Extracting features...")
-cells = apply_parallel(frame_groups, watershed.process_frame)
-# cells = pd.read_csv(str(output_path) + "/data-no-imaris.orig.csv", dtype = { 'particle_id': str })
+process_frames(frame_paths, m_frame_paths, str(csv_path))
+cells = pd.read_csv(str(csv_path), dtype = { 'particle_id': str })
+
+cells['data_set'] = data_set
+cells['x_conversion'] = pixel_size
+cells['y_conversion'] = pixel_size
+cells['event'] = 'N'
+cells['frame_rate'] = frame_rate
 
 print("Building tracks...")
-for i in cells['frame'].unique():
+for i in tqdm(cells['frame'].unique(), ncols=90, unit="frames"):
   prev_idx = ( 
-    (cells['frame'] == (i-1)) & 
-    (cells['image_type'] == 'raw') & 
-    (cells['mask'] == 'nucleus')
+    (cells['frame'] == (i-1))
   )
   this_idx = ( 
-    (cells['frame'] == i) & 
-    (cells['image_type'] == 'raw') & 
-    (cells['mask'] == 'nucleus') 
+    (cells['frame'] == i)
   )
   prev_frame = cells[prev_idx]
   this_frame = cells[this_idx]
@@ -187,10 +152,6 @@ for i in cells['frame'].unique():
   id_map = tracks.build_neighbor_map(prev_frame, this_frame, 50)
   cells.loc[(cells['frame'] == i), 'particle_id'] = tracks.track_frame(id_map, cells.loc[( cells['frame'] == i ), :])
 
-cells['x_conversion'] = pixel_size
-cells['y_conversion'] = pixel_size
-cells['event'] = 'N'
-cells['frame_rate'] = frame_rate
 # Filter short tracks
 # cells = cells.groupby([ 'data_set', 'particle_id' ]).filter(lambda x: x['frame_rate'].iloc[0]*len(x) > 28800)
 
