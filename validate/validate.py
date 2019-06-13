@@ -4,13 +4,13 @@
 Calculates scores for a given classifier
 
 Usage:
-  validate.py CLASSIFIER [--input_path=validate/validation-data/input/] [--input-name=data.csv] [--img-dir=0] [--classifier-conf=0] [--skip-graphs=0] [--skip-filtered=0]
+  validate.py CLASSIFIER [--input-path=validate/validation-data/input/] [--input-name=data.csv] [--img-dir=0] [--classifier-conf=0] [--skip-graphs=0] [--skip-filtered=0]
 
 Arguments:
   CLASSIFIER The name of the classifier to test
 
 Options:
-  --input_path=<string> [defaults: validate/validation-data/input] The directory with the CSV file containing particle data with true events
+  --input-path=<string> [defaults: validate/validation-data/input] The directory with the CSV file containing particle data with true events
   --input-name=<string> [defaults: data.csv] The name of the input CSV file
   --img-dir=<string> [defaults: INPUT/../images] The directory that contains TIFF images of each frame, for outputting videos.
   --classifier-conf=<string> [defaults: None] Will be passed along to the classifier.
@@ -55,7 +55,7 @@ classifier_name = re.sub(r'[^a-zA-Z0-9\-\_\.\+]', '', arguments['CLASSIFIER'])
 if classifier_name != arguments['CLASSIFIER']:
   print(colorize("yellow", "Classifier input has been sanitized to " + classifier_name))
 
-input_path = Path(arguments['--input_path']).resolve() if arguments['--input_path'] else Path("validate/validation-data/input").resolve()
+input_path = Path(arguments['--input-path']).resolve() if arguments['--input-path'] else Path("validate/validation-data/input").resolve()
 if not input_path.exists():
   print(colorize("red", "Data folder input cannot be found: \033[1m" + str(input_path) + "\033[0m"))
   exit(1)

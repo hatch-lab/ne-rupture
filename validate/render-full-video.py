@@ -120,13 +120,10 @@ if draw_tracks:
         cv2.line(track_frame, (prev_x, prev_y), (x, y), (255, 255, 255), 1, CIRCLE_LINE_TYPE)
       prev_x = x
       prev_y = y
-  print("")
 
+print("  Building movie for \033[1m" + data_set + "\033[0m")
 with tqdm(total=end_frame_i, ncols=90, unit="frames") as bar:
-  print("  Building movie for \033[1m" + data_set + "\033[0m")
   while(this_frame_i <= end_frame_i):
-    bar.update(1)
-
     frame_filter = data['frame'] == this_frame_i
     frame_data = data[frame_filter]
 
@@ -156,6 +153,7 @@ with tqdm(total=end_frame_i, ncols=90, unit="frames") as bar:
     writer.write(frame)
 
     this_frame_i = this_frame_i+1
+    bar.update(1)
 
   bar.close()  
 
