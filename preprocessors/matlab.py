@@ -96,6 +96,7 @@ def process_data(data_path, params):
   tmp_path = TEMP_PATH / (str(time()) + ".csv")
   MATLAB.process_video(frame_paths, m_frame_paths, str(tmp_path), stdout=out)
   
+  # tmp_path = TEMP_PATH / "1560461370.083561.csv" ## delete me
   data = pd.read_csv(str(tmp_path), dtype = { 'particle_id': str })
   data['x_conversion'] = pixel_size
   data['y_conversion'] = pixel_size
@@ -104,27 +105,14 @@ def process_data(data_path, params):
   data['sum'] = data['mean_proc_nuc']*data['area_nuc']
 
   print("Building tracks...")
-  for i in tqdm(data['frame'].unique(), ncols=90, unit="frames"):
-    prev_idx = ( 
-      (data['frame'] == (i-1))
-    )
-    this_idx = ( 
-      (data['frame'] == i)
-    )
-    prev_frame = data[prev_idx]
-    this_frame = data[this_idx]
-
-    if len(prev_frame.index) < 1:
-      continue
-
-    if len(this_frame.index) < 1:
-      break
-
-    id_map = tracks.build_neighbor_map(prev_frame, this_frame, 50)
-    data.loc[(data['frame'] == i), 'particle_id'] = tracks.track_frame(id_map, data.loc[( data['frame'] == i ), :])
+  frames = sorted(data['frame'].unique())
+  for i in tqdm(frames[:-1], ncols=90, unit="frames"):
+    data = tracks.make_tracks(data, i, 10, 3)
 
   data = base_transform(data, params)
 
+  # data['event'] = 'N' ## delete me
+  
   if tmp_path.exists():
     tmp_path.unlink()
 

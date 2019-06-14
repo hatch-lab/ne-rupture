@@ -28,35 +28,13 @@ sys.path.append(str(ROOT_PATH))
 
 from common.docopt import docopt
 from common.version import get_version
+from common.output import colorize
 
 import numpy as np
 import pandas as pd
 import csv
 import subprocess
 import re
-
-def colorize(color, string):
-  """
-  Used to print colored messages to terminal
-
-  Arguments:
-    color string The color to print
-    string string The message to print
-
-  Returns:
-    A formatted string
-  """
-  colors = {
-    "red": "31",
-    "green": "32",
-    "yellow": "33", 
-    "blue": "34",
-    "magenta": "35",
-    "cyan": "36",
-    "white": "37"
-  }
-
-  return "\033[" + colors[color] + "m" + string + "\033[0m"
 
 ### Constant for getting our base input dir
 MAKE_SINGLE_VIDEO_PATH = (ROOT_PATH / ("validate/render-particle-video.py")).resolve()

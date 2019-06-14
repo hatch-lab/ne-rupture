@@ -21,7 +21,7 @@ def base_transform(data, params):
   data['data_set'] = data_set
 
   # Filter short tracks
-  # data = data.groupby([ 'data_set', 'particle_id' ]).filter(lambda x: x['frame_rate'].iloc[0]*len(x) > 28800)
+  data = data.groupby([ 'data_set', 'particle_id' ]).filter(lambda x: x['frame_rate'].iloc[0]*len(x) > 28800)
 
   # Sort data
   data = data.sort_values(by=[ 'data_set', 'particle_id', 'time' ])
