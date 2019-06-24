@@ -144,7 +144,7 @@ with tqdm(total=end_frame_i, ncols=90, unit="frames") as bar:
         event = row['event']
 
         # Add particle_id
-        adj_circle_radius = int(round(CIRCLE_RADIUS/row['x_conversion']))
+        adj_circle_radius = int(round(CIRCLE_RADIUS))
         cv2.circle(frame, (x, y), adj_circle_radius, CIRCLE_COLORS[event], CIRCLE_THICKNESS[event], CIRCLE_LINE_TYPE)
         cv2.putText(frame, particle_id, (x, y), FONT, FONT_SCALE, FONT_COLOR, FONT_LINE_TYPE)
 
