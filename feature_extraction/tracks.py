@@ -17,17 +17,24 @@ from scipy import spatial
 def make_tracks(data, frame_num, max_distance=50, gap_size=7):
   cols = data.columns.tolist()
   id_map = build_neighbor_map(data, frame_num, max_distance, gap_size)
+  if id_map is None:
+    return data
+
+  test = id_map[(id_map['search_particle_id'] == '1.51')]    
 
   tmp = data.merge(id_map, how='left', on=[ 'particle_id' ])
   idx = ( pd.notnull(tmp['search_particle_id']) )
 
   tmp.loc[idx, 'particle_id'] = tmp.loc[idx, 'search_particle_id']
-
+  
   return tmp[ cols ]
 
 def build_neighbor_map(data, frame_num, max_distance=50, gap_size=7):
   # Build coordinate list
-  ref_data = data[( (data['frame'] > frame_num) & (data['frame'] <= frame_num+gap_size) )]
+  ref_data = data[( (data['frame'] <= frame_num+gap_size) & (data['frame'] > frame_num) & ( data['min_frame'] == data['frame'] ))]
+  
+  if ref_data['frame'].count() < 1:
+    return None
 
   x = ref_data['x'].tolist()
   y = ref_data['y'].tolist()
@@ -68,7 +75,7 @@ def build_neighbor_map(data, frame_num, max_distance=50, gap_size=7):
     'ref_frame': frames
   })
 
-  id_map['rel_frame'] = id_map['ref_frame']-1 # Time between frame 1 and current frame
+  id_map['rel_frame'] = id_map['ref_frame']-frame_num # Time between found frame and current frame
   id_map['max_distance'] = id_map['rel_frame']*max_distance
 
   # Remove entries that are beyond the max distance
@@ -85,55 +92,4 @@ def build_neighbor_map(data, frame_num, max_distance=50, gap_size=7):
   id_map = id_map.loc[( pd.notnull(id_map['search_particle_id']) )]
 
   return id_map
-
-
-# def build_neighbor_map(prev_frame, this_frame, max_distance, k=1):
-#   # Build coordinate list
-#   prev_x = prev_frame['x'].tolist()
-#   prev_y = prev_frame['y'].tolist()
-
-#   this_x = this_frame['x'].tolist()
-#   this_y = this_frame['y'].tolist()
-
-#   prev_coords = list(zip(prev_x,prev_y))
-#   this_coords = list(zip(this_x,this_y))
-
-#   # Build KDTree
-#   tree = spatial.KDTree(this_coords)
-
-#   res = tree.query([ prev_coords ], k=gap_size, distance_upper_bound=max_distanc*gap_size)
-#   if gap_size > 1:
-#     distances = res[0][...,0:(k-1)][0]
-#     idxs = res[1][...,0:(k-1)][0]
-#   else:
-#     distances = res[0][0]
-#     idxs = res[1][0]
-  
-#   neighbor_ids = this_frame['particle_id']
-#   # Cases where we couldn't find a neighbor get idx of 
-#   # one more than the number of items we have, and a 
-#   # distance of inf
-#   neighbor_ids = neighbor_ids.append(pd.Series([ np.nan ]))
-#   neighbor_ids = pd.Series(neighbor_ids.iloc[idxs]).tolist()
-
-#   id_map = pd.DataFrame({
-#     'prev_particle_id': prev_frame['particle_id'],
-#     'particle_id': neighbor_ids,
-#     'distance': distances
-#   })
-
-#   id_map.sort_values(by=[ 'particle_id', 'distance' ], ascending=[ True, False ], inplace=True)
-#   # Sometimes, multiple previous particles will map to the same current particle
-#   # We just take the closest
-#   id_map.drop_duplicates(subset='particle_id', inplace=True)
-
-#   return id_map
-
-def track_frame(id_map, frame):
-  tmp = frame.merge(id_map, how='left', on=[ 'particle_id' ])
-  idx = ( pd.notnull(tmp['prev_particle_id']) )
-
-  tmp.loc[idx, 'particle_id'] = tmp.loc[idx, 'prev_particle_id']
-
-  return tmp['particle_id'].tolist()
 

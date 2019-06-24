@@ -64,14 +64,14 @@ output_name = arguments['--output-name'] if arguments['--output-name'] else "dat
 data_path = (ROOT_PATH / (arguments['--data-dir'])).resolve() if arguments['--data-dir'] else processor.get_default_data_path(input_path)
 
 data_set = arguments['--data-set'] if arguments['--data-set'] else (input_path).resolve().name
-frame_rate = arguments['--frame-rate'] if arguments['--frame-rate'] else 180
+frame_rate = int(arguments['--frame-rate']) if arguments['--frame-rate'] else 180
 
 tiff_path = (ROOT_PATH / (arguments['--img-dir'])).resolve() if arguments['--img-dir'] else (input_path / ("images/" + data_set))
 
 filter_window = float(arguments['--filter-window']) if arguments['--filter-window'] else 5.0
 gamma = float(arguments['--gamma']) if arguments['--gamma'] else 0.50
 channel = int(arguments['--channel']) if arguments['--channel'] else 1
-pixel_size = arguments['--pixel-size'] if arguments['--pixel-size'] else 1
+pixel_size = float(arguments['--pixel-size']) if arguments['--pixel-size'] else 1
 rolling_ball_size = int(arguments['--rolling-ball-size']) if arguments['--rolling-ball-size'] else 30
 
 

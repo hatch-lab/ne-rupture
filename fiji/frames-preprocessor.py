@@ -5,7 +5,7 @@
 Uses Jython, FIJI's Python2 interpreter. Note: This is --->Python2<--. The rest of this library uses Python3.
 
 Usage:
-  frames-preprocessor.py INPUT OUTPUT [--filter-window=5.0] [--gamma=0.50] [--channel=2] [--objective=20] [--microscope=SPE] [--data-set=0] [--pixel-size=0] [--rolling-ball-size=30]
+  frames-preprocessor.py INPUT OUTPUT [--filter-window=5.0] [--gamma=0.50] [--channel=1] [--objective=20] [--microscope=SD] [--pixel-size=0] [--rolling-ball-size=30]
 
 Arguments:
   INPUT Path to the TIFF files to process; include the trailing slash
@@ -14,10 +14,9 @@ Arguments:
 Options:
   --filter-window=<float> [defaults: 5.0] The window size used for the median pass filter, in px
   --gamma=<float> [defaults: 0.50] The gamma correction to use
-  --channel=<int> [defaults: 2] The channel to keep (ie, the NLS-3xGFP channel)
+  --channel=<int> [defaults: 1] The channel to keep (ie, the NLS-3xGFP channel)
   --objective=<int> [defaults: 20] The microscope objective (eg, 20 for 20x)
-  --microscope=<string> [defaults: SPE] "SPE" or "SD"
-  --data-set=<string|falsey> [defaults: None] The unique identifier for this data set. If none is supplied, the base file name of each TIFF will be used.
+  --microscope=<string> [defaults: SD] "SPE" or "SD"
   --pixel-size=<int|0> [defaults: 0] Specifying microscope and objective will automatically determine pixel size. If supplied here, that value will be used instead.
   --rolling-ball-size=<int> [defaults: 30] The rolling ball diameter to use for rolling ball subtraction, in um
 """
@@ -46,11 +45,10 @@ input_dir = arguments['INPUT']
 output_dir = arguments['OUTPUT']
 filter_window = float(arguments['--filter-window']) if arguments['--filter-window'] else 5.0
 gamma = float(arguments['--gamma']) if arguments['--gamma'] else 0.50
-channel = int(arguments['--channel']) if arguments['--channel'] else 2
+channel = int(arguments['--channel']) if arguments['--channel'] else 1
 objective = int(arguments['--objective']) if arguments['--objective'] else 20
 microscope = arguments['--microscope'] if arguments['--microscope'] else "SD"
-folder_name = arguments['--data-set'] if arguments['--data-set'] else None
-pixel_size = int(arguments['--pixel-size']) if arguments['--pixel-size'] else None
+pixel_size = float(arguments['--pixel-size']) if arguments['--pixel-size'] else None
 rolling_ball_size = int(arguments['--rolling-ball-size']) if arguments['--pixel-size'] else 30
 
 channel_splitter = ChannelSplitter()
@@ -120,7 +118,7 @@ for file in files:
   frame.setCalibration(calibration)
 
   # Save to output dir
-  file_name = output_dir + folder_name + "/" + str(frame_i).zfill(4) + ".tif"
+  file_name = output_dir + "/" + str(frame_i).zfill(4) + ".tif"
   FileSaver(frame).saveAsTiff(file_name)
 
   frame_i = frame_i + 1

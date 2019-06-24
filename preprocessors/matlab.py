@@ -20,6 +20,7 @@ import subprocess
 from multiprocessing import Pool, cpu_count
 
 from tqdm import tqdm
+import progressbar
 from time import sleep,time
 import io
 
@@ -59,19 +60,21 @@ def process_data(data_path, params):
   channel = params['channel']
   pixel_size = params['pixel_size']
   rolling_ball_size = params['rolling_ball_size']
+  tiff_path = params['tiff_path']
 
   processed_path = (input_path / "images").resolve()
+
+  tiff_path.mkdir(mode=0o755, parents=True, exist_ok=True)
 
   cmd = [
     str(FIJI_PATH),
     "--headless",
     str(PREPROCESSOR_PATH),
     str(data_path) + "/",
-    str(processed_path) + "/",
+    str(tiff_path) + "/",
     "--filter-window=" + str(filter_window),
     "--gamma=" + str(gamma),
     "--channel=" + str(channel),
-    "--data-set=" + data_set,
     "--pixel-size=" + str(pixel_size),
     "--rolling-ball-size=" + str(rolling_ball_size)
   ]
@@ -88,15 +91,20 @@ def process_data(data_path, params):
   m_frame_paths.sort()
 
   TEMP_PATH.mkdir(mode=0o755, parents=True, exist_ok=True)
-
-  MATLAB.cd(str(MATLAB_PATH))
+  tmp_path = TEMP_PATH / (str(time()) + ".csv")
 
   out = io.StringIO()
 
-  tmp_path = TEMP_PATH / (str(time()) + ".csv")
-  MATLAB.process_video(frame_paths, m_frame_paths, str(tmp_path), stdout=out)
+  print("Running MATLAB feature extraction...")
+  MATLAB.cd(str(MATLAB_PATH))
+  promise = MATLAB.process_video(frame_paths, m_frame_paths, str(tmp_path), stdout=out, background=True)
+  bar = progressbar.ProgressBar(term_width = 35, max_value = progressbar.UnknownLength, widgets=[ progressbar.BouncingBar() ])
+  while promise.done() is not True:
+    bar.update(1)
+    sleep(0.2)
+
+  bar.finish()
   
-  # tmp_path = TEMP_PATH / "1560461370.083561.csv" ## delete me
   data = pd.read_csv(str(tmp_path), dtype = { 'particle_id': str })
   data['x_conversion'] = pixel_size
   data['y_conversion'] = pixel_size
@@ -106,12 +114,13 @@ def process_data(data_path, params):
 
   print("Building tracks...")
   frames = sorted(data['frame'].unique())
+  data['min_frame'] = (data['particle_id'].str.split(".").str[0]).astype('int')
   for i in tqdm(frames[:-1], ncols=90, unit="frames"):
     data = tracks.make_tracks(data, i, 10, 3)
 
-  data = base_transform(data, params)
+  data.drop_duplicates(subset=[ 'particle_id', 'frame' ], inplace=True)
 
-  # data['event'] = 'N' ## delete me
+  data = base_transform(data, params)
   
   if tmp_path.exists():
     tmp_path.unlink()
