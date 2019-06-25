@@ -4,7 +4,7 @@
 Attempts to find optimal parameters for a given model
 
 Usage:
-  find-hyperparameters.py CLASSIFIER [--test-data-folder=validate/validation-data/input/] [--steps=3600]
+  find-hyperparameters.py CLASSIFIER [--test-data-folder=validate/validation-data/input/] [--steps=3600] [--skip-graphs=0]
 
 Arguments:
   CLASSIFIER The name of the classifier to test
@@ -12,9 +12,10 @@ Arguments:
 Options:
   --test-data-folder=<string> [defaults: validate/validation-data/input] The directory with the CSV file containing particle data with true events
   --steps=<int> [defaults: 60] The number of values to try for each hyper parameter
+  --skip-graphs=<bool> [defaults: False] If true, will not print AUC curves
 
 Output:
-  CSV file with parameter, TP, and FN rates for drawing AUC
+  CSV file with TP, and FN rates for drawing AUC
 """
 import sys
 import os
@@ -40,6 +41,9 @@ import re
 import time
 import math
 
+### Constants
+R_GRAPH_PATH = (ROOT_PATH / ("validate/find-hyperparameters/make-graphs.R")).resolve()
+
 ### Arguments and inputs
 arguments = docopt(__doc__, version=get_version())
 
@@ -53,6 +57,7 @@ if not data_file_path.exists():
   exit(1)
 
 steps = int(arguments['--steps']) if arguments['--steps'] else 3600
+skip_graphs = bool(arguments['--skip-graphs']) if arguments['--skip-graphs'] else False
 
 hyper_conf_path = (ROOT_PATH / ("classifiers/" + classifier_name + "/hyperparameters.conf.json")).resolve()
 conf_path       = (ROOT_PATH / ("classifiers/" + classifier_name + "/conf.json")).resolve()
@@ -176,4 +181,19 @@ for i, combination in enumerate(combinations):
 
 print()
 result = pd.concat(results)
+
+output_path.mkdir(exist_ok=True)
+csv_path = (output_path / "auc.csv")
 result.to_csv(str(output_path / "auc.csv"), header=True, encoding='utf-8', index=None)
+
+if skip_graphs is not False:
+  graph_path = (output_path / "auc.pdf")
+  print("Printing graphs to \033[1m" + str(graph_path) + "\033[0m")
+  cmd = [
+    "Rscript",
+    "--vanilla",
+    str(R_GRAPH_PATH),
+    str(csv_path),
+    str(graph_path)
+  ]
+  subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
