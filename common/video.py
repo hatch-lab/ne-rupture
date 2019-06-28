@@ -10,7 +10,7 @@ def crop_frame(frame, x, y, width, height, is_color=False):
 
   Arguments:
     frame ndarray The numpy multi-d array representing the image
-    x int The center of the cropped iamge, in pixels
+    x int The center of the cropped image, in pixels
     y int The center of the cropped image, in pixels
     width int The width of the cropped image, in pixels
     height int The height of the cropped image, in pixels

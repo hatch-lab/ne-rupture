@@ -1,4 +1,4 @@
-function AllStatsPath=process_video(FramePaths, MFramePaths, OutputPath)
+function AllStatsPath=process_video(FramePaths, MFramePaths, PxSize, OutputPath, MaskPath)
 
   NumFrames = numel(FramePaths);
 
@@ -8,7 +8,7 @@ function AllStatsPath=process_video(FramePaths, MFramePaths, OutputPath)
   parfor i=1:NumFrames
     I=imread(MFramePaths{i}); %read processed image from ith frame
     O=imread(FramePaths{i}); %read original image from ith frame
-    Stats=get_frame_features(I,O,i);
+    Stats=get_frame_features(I,O,i,PxSize,MaskPath);
     AllStats=[ AllStats ; Stats ];
     disp(i)
   end

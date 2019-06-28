@@ -16,11 +16,10 @@ from scipy import spatial
 
 def make_tracks(data, frame_num, max_distance=50, gap_size=7):
   cols = data.columns.tolist()
+
   id_map = build_neighbor_map(data, frame_num, max_distance, gap_size)
   if id_map is None:
     return data
-
-  test = id_map[(id_map['search_particle_id'] == '1.51')]    
 
   tmp = data.merge(id_map, how='left', on=[ 'particle_id' ])
   idx = ( pd.notnull(tmp['search_particle_id']) )
@@ -72,7 +71,15 @@ def build_neighbor_map(data, frame_num, max_distance=50, gap_size=7):
     'search_particle_id': search_ids,
     'particle_id': neighbor_ids,
     'distance': distances,
-    'ref_frame': frames
+    'ref_frame': frames,
+    'this_frame': [ frame_num ]*len(frames)
+  })
+  id_map.astype({
+    'search_particle_id': str,
+    'particle_id': str,
+    'distance': np.float64,
+    'ref_frame': np.float32,
+    'this_frame': np.float32, # Need to be floats to account for NA
   })
 
   id_map['rel_frame'] = id_map['ref_frame']-frame_num # Time between found frame and current frame

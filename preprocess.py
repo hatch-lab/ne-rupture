@@ -4,7 +4,7 @@
 Gets data into a format readable by classifiers
 
 Usage:
-  preprocess.py PROCESSOR INPUT [--output-dir=0] [--img-dir=0] [--output-name=data.csv] [--data-dir=0] [--frame-rate=180] [--filter-window=5.0] [--gamma=0.50] [--channel=2] [--objective=20] [--microscope=SD] [--data-set=0] [--pixel-size=0] [--rolling-ball-size=30] [--img-dir=0]
+  preprocess.py PROCESSOR INPUT [--output-dir=0] [--img-dir=0] [--mip-dir=0] [--output-name=data.csv] [--data-dir=0] [--frame-rate=180] [--filter-window=5.0] [--gamma=0.50] [--channel=2] [--objective=20] [--microscope=SD] [--data-set=0] [--pixel-size=0] [--rolling-ball-size=30] [--img-dir=0]
 
 Arguments:
   PROCESSOR The kind of image processor to use (eg, imaris or matlab)
@@ -16,6 +16,7 @@ Options:
   --output-dir=<string> [defaults: INPUT/output] The directory to save the resulting CSV file
   --output-name=<string> [defaults: data.csv] The name of the resulting CSV file
   --img-dir=<string> [defaults: INPUT/images/data_set] The path to TIFF files
+  --mip-dir=<string> [defaults: INPUT/images/data_set/mip] The path to MIP files
   --data-dir=<string> [defaults: INPUT/images/raw for MATLAB; INPUT/input for Imaris]
   --filter-window=<float> [defaults: 5.0] The window size used for the median pass filter, in px
   --gamma=<float> [defaults: 0.50] The gamma correction to use
@@ -67,6 +68,7 @@ data_set = arguments['--data-set'] if arguments['--data-set'] else (input_path).
 frame_rate = int(arguments['--frame-rate']) if arguments['--frame-rate'] else 180
 
 tiff_path = (ROOT_PATH / (arguments['--img-dir'])).resolve() if arguments['--img-dir'] else (input_path / ("images/" + data_set))
+mip_path = (ROOT_PATH / (arguments['--mip-dir'])).resolve() if arguments['--mip-dir'] else (tiff_path / "mip")
 
 filter_window = float(arguments['--filter-window']) if arguments['--filter-window'] else 5.0
 gamma = float(arguments['--gamma']) if arguments['--gamma'] else 0.50
@@ -80,6 +82,7 @@ params = {
   'data_set': data_set,
   'input_path': input_path,
   'tiff_path': tiff_path,
+  'mip_path': mip_path,
   'frame_rate': frame_rate,
   'filter_window': filter_window,
   'gamma': gamma,
