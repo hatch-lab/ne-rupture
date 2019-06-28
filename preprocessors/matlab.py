@@ -179,6 +179,7 @@ def process_data(data_path, params):
         ref_particle_imgs[pid] = particle_imgs[pid].copy()
 
   data['mip_sum'] = 0.0
+  data['mip_cyto_sum'] = 0.0
   data['mip_normalized_sum'] = 0.0
   for pid, img in particle_imgs.items():
     idx = (data['particle_id'] == pid)
@@ -189,7 +190,8 @@ def process_data(data_path, params):
 
     cyto = cv2.bitwise_and(img, img, mask=mask)
 
-    data.loc[idx, 'mip_sum'] = np.sum(cyto)
+    data.loc[idx, 'mip_cyto_sum'] = np.sum(cyto)
+    data.loc[idx, 'mip_normalized_sum'] = np.sum(cyto)/np.sum(img)
 
   # Clear out the old images
   if mip_path.exists():
