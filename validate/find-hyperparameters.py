@@ -186,7 +186,7 @@ output_path.mkdir(exist_ok=True)
 csv_path = (output_path / "auc.csv")
 result.to_csv(str(output_path / "auc.csv"), header=True, encoding='utf-8', index=None)
 
-if skip_graphs is not False:
+if skip_graphs is not True:
   graph_path = (output_path / "auc.pdf")
   print("Printing graphs to \033[1m" + str(graph_path) + "\033[0m")
   cmd = [

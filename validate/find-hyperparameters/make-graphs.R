@@ -28,9 +28,9 @@ best_df <- auc[idx,]
 best_df <- best_df[order(best_df$x),]
 best_df <- best_df[1,]
 
-best_text <- ""
+best_text <- paste0("sensitivity: ", best_df$sensitivity[[1]], "\n", "1-specificity: ", best_df$x[[1]], "\n")
 for(param in setdiff(names(best_df),c("data_set", "event", "sensitivity", "specificity", "x"))) {
-  best_text <- paste0(best_text, param, ": ", best_df[[param]][[1]], "\n")
+  best_text <- paste0(best_text, param, ": ", round(best_df[[param]][[1]], 4), "\n")
 }
 
 base_plot <- ggplot(auc[which(auc$event == "Rupture" & auc$data_set == "All"),], aes(x=x, y=sensitivity)) +
@@ -44,7 +44,5 @@ base_plot <- ggplot(auc[which(auc$event == "Rupture" & auc$data_set == "All"),],
 
 # Print out
 cairo_pdf(output, width=10, height=8.25, onefile=T)
-for(i in 1:length(plots)) {
-  print(base_plot)
-}
+print(base_plot)
 dev.off()

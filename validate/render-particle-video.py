@@ -30,6 +30,7 @@ sys.path.append(str(ROOT_PATH))
 
 from common.docopt import docopt
 from common.version import get_version
+import common.video as hatchvid
 
 import numpy as np
 import pandas as pd
@@ -37,7 +38,6 @@ import csv
 import cv2
 import math
 import re
-import common.video as hatchvid
 
 ### Constant
 FONT           = cv2.FONT_HERSHEY_PLAIN
