@@ -1,4 +1,4 @@
-function FrameStats=get_frame_features(I,O,t,um,M)
+function FrameStats=get_frame_features(I,t,um,M)
 
   %This function is used to segment individual nuclei based on nlsGFP signal,
   % to define the cytoplasmic compartment, and to collect useful metrics for
@@ -6,7 +6,6 @@ function FrameStats=get_frame_features(I,O,t,um,M)
   % Input Arguments:
   %
   % I  Processed image frame
-  % O  Original image frame
   % t  Time frame index
   % um The number of microns/px
   % M  Where to save the masks for this frame
@@ -55,48 +54,36 @@ function FrameStats=get_frame_features(I,O,t,um,M)
   save(strcat(M,"/",int2str(t)), 'Lnuc')
 
   %% Measure object properties from nucleus and cytoplasmic components
-
-  RawStatsNuc=regionprops(Lnuc, O, 'all');
-  RawStatsCyto=regionprops(Lcyto, O, 'all');
-
   ProcessedStatsNuc=regionprops(Lnuc, I, 'all');
   ProcessedStatsCyto=regionprops(Lcyto, I, 'all');
 
   %combine properties in one structure
-  FrameStats = cell(numel(RawStatsNuc),26);
-  for j=1:numel(RawStatsNuc)
+  FrameStats = cell(numel(ProcessedStatsNuc),18);
+  for j=1:numel(ProcessedStatsNuc)
     FrameStats(j,:) = {
       strcat(num2str(t),".",num2str(j)), % particle_id
       t, % frame
 
-      RawStatsNuc(j).Centroid(1)*um, % x
-      RawStatsNuc(j).Centroid(2)*um, % y
+      ProcessedStatsNuc(j).WeightedCentroid(1)*um, % x
+      ProcessedStatsNuc(j).WeightedCentroid(2)*um, % y
 
-      RawStatsNuc(j).WeightedCentroid(1)*um, % weighted_x_raw_nuc
-      RawStatsNuc(j).WeightedCentroid(2)*um, % weighted_y_raw_nuc
-      RawStatsCyto(j).WeightedCentroid(1)*um, % weighted_x_raw_cyto
-      RawStatsCyto(j).WeightedCentroid(2)*um, % weighted_y_raw_cyto
-      ProcessedStatsNuc(j).WeightedCentroid(1)*um, % weighted_x_proc_nuc
-      ProcessedStatsNuc(j).WeightedCentroid(2)*um, % weighted_y_proc_nuc
-      ProcessedStatsCyto(j).WeightedCentroid(1)*um, % weighted_x_proc_cyto
-      ProcessedStatsCyto(j).WeightedCentroid(2)*um, % weighted_y_proc_cyto
+      ProcessedStatsCyto(j).WeightedCentroid(1)*um, % weighted_x_cyto
+      ProcessedStatsCyto(j).WeightedCentroid(2)*um, % weighted_y_cyto
+      ProcessedStatsNuc(j).Centroid(1)*um, % x_nuc
+      ProcessedStatsNuc(j).Centroid(2)*um, % y_nuc
+      ProcessedStatsCyto(j).Centroid(1)*um, % x_cyto
+      ProcessedStatsCyto(j).Centroid(2)*um, % y_cyto
 
-      RawStatsNuc(j).Area, % area_nuc
-      RawStatsCyto(j).Area, % area_cyto
+      ProcessedStatsNuc(j).Area, % area_nuc
+      ProcessedStatsNuc(j).Area, % area_cyto
 
-      RawStatsNuc(j).MeanIntensity, % mean_raw_nuc
-      RawStatsCyto(j).MeanIntensity, % mean_raw_cyto
-      ProcessedStatsNuc(j).MeanIntensity, % mean_proc_nuc
-      ProcessedStatsCyto(j).MeanIntensity, % mean_prc_cyto
+      ProcessedStatsNuc(j).MeanIntensity, % mean_nuc
+      ProcessedStatsCyto(j).MeanIntensity, % mean_cyto
 
-      RawStatsNuc(j).MinIntensity, % min_raw_nuc
-      RawStatsCyto(j).MinIntensity, % min_raw_cyto
-      ProcessedStatsNuc(j).MinIntensity, % min_proc_nuc
-      ProcessedStatsCyto(j).MinIntensity, % min_prc_cyto 
+      ProcessedStatsNuc(j).MinIntensity, % min_nuc
+      ProcessedStatsCyto(j).MinIntensity, % min_cyto 
 
-      RawStatsNuc(j).MaxIntensity, % max_raw_nuc
-      RawStatsCyto(j).MaxIntensity, % max_raw_cyto
-      ProcessedStatsNuc(j).MaxIntensity, % max_proc_nuc
-      ProcessedStatsCyto(j).MaxIntensity % max_prc_cyto      
+      ProcessedStatsNuc(j).MaxIntensity, % max_nuc
+      ProcessedStatsCyto(j).MaxIntensity % max_cyto      
     };
   end

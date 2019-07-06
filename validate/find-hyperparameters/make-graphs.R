@@ -4,7 +4,7 @@ args <- commandArgs(trailingOnly=T)
 
 if(length(args) <= 0) {
   stop("No arguments supplied!", call.=F)
-} else if(length(args) != 5) {
+} else if(length(args) != 2) {
   stop("Incorrect number of arguments supplied=!", call.=F)
 }
 

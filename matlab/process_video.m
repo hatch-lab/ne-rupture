@@ -1,19 +1,30 @@
-function AllStatsPath=process_video(FramePaths, MFramePaths, PxSize, OutputPath, MaskPath)
+function AllStatsPath=process_video(FramePaths, PxSize, OutputPath, MaskPath)
 
   NumFrames = numel(FramePaths);
 
-  AllStats=cell(0,26);
+  AllStats=cell(0,18);
 
   parpool('local')
   parfor i=1:NumFrames
-    I=imread(MFramePaths{i}); %read processed image from ith frame
-    O=imread(FramePaths{i}); %read original image from ith frame
-    Stats=get_frame_features(I,O,i,PxSize,MaskPath);
+    I=imread(FramePaths{i}); %read original image from ith frame
+    Stats=get_frame_features(I,i,PxSize,MaskPath);
+
+    % Filter by size and intensity
+    % TMI=cell2mat(Stats(:,13)); % Nuc Mean
+    % TS=cell2mat(Stats(:,11)); % Nuc Area
+    % tf=TMI<45 | TS<900 | TS>6000;
+    % Stats(tf,:)=[];
+
+    % Delete nuclei that are too close to others
+    % C=reshape([cell2mat(Stats(:,7:8))],2,numel(Stats(:,1)))';
+    % pd=squareform(pdist(C));
+    % [r c]=find(pd<50 & pd>0);
+    % Stats(unique(r),:)=[];
     AllStats=[ AllStats ; Stats ];
     disp(i)
   end
 
-  Table = cell2table(AllStats,'VariableNames',{ 'particle_id', 'frame', 'x', 'y', 'weighted_x_raw_nuc', 'weighted_y_raw_nuc', 'weighted_x_raw_cyto', 'weighted_y_raw_cyto', 'weighted_x_proc_nuc', 'weighted_y_proc_nuc', 'weighted_x_proc_cyto', 'weighted_y_proc_cyto', 'area_nuc', 'area_cyto', 'mean_raw_nuc', 'mean_raw_cyto', 'mean_proc_nuc', 'mean_proc_cyto', 'min_raw_nuc', 'min_raw_cyto', 'min_proc_nuc', 'min_proc_cyto', 'max_raw_nuc', 'max_raw_cyto', 'max_proc_nuc', 'max_proc_cyto' });
+  Table = cell2table(AllStats,'VariableNames',{ 'particle_id', 'frame', 'x', 'y', 'weighted_x_cyto', 'weighted_y_cyto', 'x_nuc', 'y_nuc', 'x_cyto', 'y_cyto', 'area_nuc', 'area_cyto', 'mean_nuc', 'mean_cyto', 'min_nuc', 'min_cyto', 'max_nuc', 'max_cyto' });
   writetable(Table,OutputPath);
   AllStatsPath = OutputPath;
 

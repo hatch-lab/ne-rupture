@@ -36,6 +36,10 @@ def get_cell_stats(p_data, skip_filtered=False):
     result['pred' + event] = True if event in p_data['event'].unique() else False
     result['true' + event] = True if event in p_data['true_event'].unique() else False
 
+    if 'cell_event' in p_data.columns:
+      result['pred' + event] = True if event in p_data['cell_event'].unique() else False
+      result['true' + event] = True if event in p_data['true_cell_event'].unique() else False
+
   return result
 
 def get_summary_table(results, data_set):

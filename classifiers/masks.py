@@ -57,7 +57,7 @@ def seed_events(data, conf):
     Panda DataFrame The modified particle data
   """
 
-  data['ratio'] = data['mean_raw_cyto']/data['mean_raw_nuc']
+  data['ratio'] = data['mean_cyto']/data['mean_nuc']
   r_idx = (data['ratio'] >= conf['ratio_cutoff'])
   data.loc[r_idx, 'event'] = 'R'
 

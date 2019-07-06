@@ -70,8 +70,6 @@ def process_data(data_path, params):
   tiff_path = params['tiff_path']
   mip_path = params['mip_path']
 
-  processed_path = (input_path / "images").resolve()
-
   tiff_path.mkdir(mode=0o755, parents=True, exist_ok=True)
 
   cmd = [
@@ -92,11 +90,8 @@ def process_data(data_path, params):
     print(colorize("red", "Unable to process TIFFs"))
     exit(1)
 
-  frame_paths = [ str(x) for x in data_path.glob("*.tif") ]
+  frame_paths = [ str(x) for x in tiff_path.glob("*.tif") ]
   frame_paths.sort()
-
-  m_frame_paths = [ str(x) for x in (processed_path / data_set).glob("*.tif") ]
-  m_frame_paths.sort()
 
   TEMP_PATH.mkdir(mode=0o755, parents=True, exist_ok=True)
   tmp_label = str(time())
@@ -108,21 +103,23 @@ def process_data(data_path, params):
   out = io.StringIO()
 
   print("Running MATLAB feature extraction...")
+  start = time()
   MATLAB.cd(str(MATLAB_PATH))
-  promise = MATLAB.process_video(frame_paths, m_frame_paths, pixel_size, str(tmp_csv_path), str(tmp_mask_path), stdout=out, background=True)
+  promise = MATLAB.process_video(frame_paths, pixel_size, str(tmp_csv_path), str(tmp_mask_path), stdout=out, background=True)
   bar = progressbar.ProgressBar(term_width = 35, max_value = progressbar.UnknownLength, widgets=[ progressbar.BouncingBar() ])
   while promise.done() is not True:
     bar.update(1)
     sleep(0.2)
 
   bar.finish()
-  
+  print("Finished in " + str((time() - start)/60) + " min")
+
   data = pd.read_csv(str(tmp_csv_path), dtype = { 'particle_id': str })
   data['x_conversion'] = pixel_size
   data['y_conversion'] = pixel_size
-  data['median'] = data['mean_proc_nuc']
+  data['median'] = data['mean_nuc']
   data['area'] = data['area_nuc']
-  data['sum'] = data['mean_proc_nuc']*data['area_nuc']
+  data['sum'] = data['mean_nuc']*data['area_nuc']
 
   print("Building tracks...")
   frames = sorted(data['frame'].unique())
@@ -136,15 +133,17 @@ def process_data(data_path, params):
 
   data = base_transform(data, params)
 
+  # Filter out particles that are too near each other
+  data = data.loc[(data['nearest_neighbor_distance'] >= 8*pixel_size),:]
+
   # Build MIP for each particle
-  MATLAB.cd(str(tmp_mask_path))
   particle_imgs = {} # MIP over the entire video
   ref_particle_imgs = {} # MIP for the first 3 frames
   captured_frames = {} # Number of frames we've captured per pid
   print("Building MIP for each particle...")
   for i in tqdm(frames, ncols=90, unit="frames"):
     mask = np.matrix(sio.loadmat(str(tmp_mask_path / (str(i) + ".mat")))['Lnuc'], dtype=np.uint8)
-    img = cv2.imread(m_frame_paths[(i-1)], cv2.IMREAD_GRAYSCALE)
+    img = cv2.imread(frame_paths[(i-1)], cv2.IMREAD_GRAYSCALE)
     
     for pid in data.loc[(data['frame'] == i), 'particle_id']:
       

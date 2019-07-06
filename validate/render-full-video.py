@@ -3,7 +3,7 @@
 """Render video of a cell
 
 Usage:
-  render-full-video.py IMAGES_DIR INPUT_CSV DATA_SET OUTPUT_DIR [--draw-tracks=0]
+  render-full-video.py IMAGES_DIR INPUT_CSV DATA_SET OUTPUT_DIR [--draw-tracks=0] [--draw-events=1]
   render-full-video.py -h | --help
   render-full-video.py --version
 
@@ -16,6 +16,7 @@ Arguments:
 
 Options:
   --draw-tracks=<bool> [defaults: 0] Whether to draw the particle tracks
+  --draw-events=<bool> [defaults: 1] Whether to color events
 """
 import sys
 import os
@@ -70,12 +71,17 @@ csv_path = Path(arguments['INPUT_CSV']).resolve()
 data_set = arguments['DATA_SET']
 output_path = Path(arguments['OUTPUT_DIR']).resolve()
 draw_tracks = bool(arguments['--draw-tracks']) if arguments['--draw-tracks'] else False
+draw_events = bool(arguments['--draw-events']) if arguments['--draw-events'] else True
 
 ### Get our data
 data = pd.read_csv(str(csv_path), header=0, dtype={ 'particle_id': str })
 data = data[(data['data_set'] == data_set)]
 
-data = data[[ 'particle_id', 'frame', 'x', 'y', 'x_conversion', 'y_conversion', 'event' ]]
+if 'event' in data.columns.tolist():
+  data = data[[ 'particle_id', 'frame', 'x', 'y', 'x_conversion', 'y_conversion', 'event' ]]
+else:
+  data = data[[ 'particle_id', 'frame', 'x', 'y', 'x_conversion', 'y_conversion' ]]
+  draw_events = False
 data.sort_values('frame')
 
 
@@ -141,7 +147,7 @@ with tqdm(total=end_frame_i, ncols=90, unit="frames") as bar:
         particle_id = row['particle_id']
         x = int(round(row['x']/row['x_conversion']))
         y = int(round(row['y']/row['y_conversion']))
-        event = row['event']
+        event = row['event'] if draw_events else 'N'
 
         # Add particle_id
         adj_circle_radius = int(round(CIRCLE_RADIUS))
