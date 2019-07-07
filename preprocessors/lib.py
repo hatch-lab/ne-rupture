@@ -41,6 +41,8 @@ def base_transform(data, params):
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(make_stationary, 'normalized_median', 'stationary_median')
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(make_stationary, 'normalized_sum', 'stationary_sum')
 
+  data = data.groupby([ 'data_set', 'particle_id' ]).apply(z_score, 'mean_cyto', 'z_cyto')
+
   # Interpolate with cubic splines/find derivatives
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'scaled_area', 'area')
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'normalized_median', 'median')
@@ -111,6 +113,21 @@ def normalize_intensity(group, normalize_by, col, new_col):
   """
   mean_val = np.mean(group[normalize_by])
   group[new_col] = group[col]/mean_val
+  return group
+
+def z_score(group, col, new_col):
+  """
+  Find z-score of given column
+
+  Arguments:
+    group Pandas DataFrame of each frame
+
+  Returns:
+    Modified Pandas DataFrame
+  """
+  mean_val = np.mean(group[col])
+  sd = np.std(group[col])
+  group[new_col] = (group[col]-mean_val)/sd
   return group
 
 def make_stationary(group, col, new_col):
