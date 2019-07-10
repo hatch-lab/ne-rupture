@@ -1,0 +1,7 @@
+{
+  "validation_data_path": "validate/validation-data/input/data.csv",
+  "score_cutoff": 0.8,
+  "time-smash": 1.0,
+  "masks": 1.0,
+  "fixed-cutoff": 1.0
+}

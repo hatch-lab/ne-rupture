@@ -1,0 +1,6 @@
+{
+  "score_cutoff": [ 0.2, 1 ],
+  "time-smash": [ 0, 1 ],
+  "masks": [ 0, 1 ],
+  "fixed-cutoff": [ 0.00001, 1 ]
+}

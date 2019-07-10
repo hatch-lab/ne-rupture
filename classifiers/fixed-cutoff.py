@@ -8,8 +8,6 @@ ROOT_PATH = Path(__file__ + "/../..").resolve()
 
 sys.path.append(str(ROOT_PATH))
 
-from common.docopt import docopt
-
 import math
 import numpy as np
 import pandas as pd
@@ -308,3 +306,45 @@ def run(data, conf=False, fast=False):
     data = apply_parallel(data.groupby([ 'data_set', 'particle_id' ]), "Classifying particles", process_event_seeds, conf)
 
   return data
+
+def get_weights(data, validation_data_path):
+  validation_data = pd.read_csv(str(validation_data_path), header=0, dtype={ 'particle_id': str })
+
+  denominators = {}
+  for event in validation_data['true_event'].unique():
+    num_all_cells = validation_data.loc[(validation_data['true_event'] == event), : ].groupby([ 'data_set', 'particle_id' ]).size().shape[0]
+    denominators[event] = num_all_cells
+    data.loc[:, 'cell_' + event + '_score'] = 0.0
+
+  data = data.groupby([ 'data_set', 'particle_id' ]).apply(get_cell_weights, validation_data, denominators)
+
+  return data
+
+def get_cell_weights(p_data, validation_data, denominators):
+  median_threshold = np.min(p_data['stationary_median'])
+  area_threshold = np.max(p_data['stationary_area'])
+
+  confident_median_threshold = np.max(p_data['stationary_median'])
+  nn_threshold = np.min(p_data['nearest_neighbor_distance'])
+
+  sum_threshold = np.min(p_data['stationary_sum'])
+
+  r_idx = ( (validation_data['stationary_median'] <= median_threshold) & (validation_data['stationary_area'] >= area_threshold) )
+  f_idx = ( (validation_data['stationary_median'] >= confident_median_threshold) & (validation_data['nearest_neighbor_distance'] <= nn_threshold) )
+  m_idx = ( (validation_data['stationary_sum'] <= sum_threshold) )
+
+  r = validation_data.loc[((validation_data['true_event'] == 'R') & r_idx), :]
+
+  real_r = r.loc[(~f_idx), :]
+  r_score = real_r.groupby([ 'data_set', 'particle_id' ]).size().shape[0]/denominators['R']
+  p_data.loc[:, 'cell_R_score'] = r_score
+
+  m = r.loc[(m_idx), :]
+  m_score = m.groupby([ 'data_set', 'particle_id' ]).size().shape[0]/denominators['M']
+  p_data.loc[:, 'cell_M_score'] = m_score
+
+  p_data.loc[:, 'cell_X_score'] = 0.0
+  n_score = 1.0-r_score-m_score
+  p_data.loc[:, 'cell_N_score'] = n_score if n_score > 0 else 0.0
+
+  return p_data
