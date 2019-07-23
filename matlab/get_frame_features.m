@@ -58,8 +58,9 @@ function FrameStats=get_frame_features(I,t,um,M)
   ProcessedStatsCyto=regionprops(Lcyto, I, 'all');
 
   %combine properties in one structure
-  FrameStats = cell(numel(ProcessedStatsNuc),18);
-  for j=1:numel(ProcessedStatsNuc)
+  NumItems = min(numel(ProcessedStatsNuc), numel(ProcessedStatsCyto))
+  FrameStats = cell(NumItems,18);
+  for j=1:NumItems
     FrameStats(j,:) = {
       strcat(num2str(t),".",num2str(j)), % particle_id
       t, % frame

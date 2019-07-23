@@ -69,6 +69,7 @@ def process_data(data_path, params):
   rolling_ball_size = params['rolling_ball_size']
   tiff_path = params['tiff_path']
   mip_path = params['mip_path']
+  keep_imgs = params['keep_imgs']
 
   tiff_path.mkdir(mode=0o755, parents=True, exist_ok=True)
 
@@ -106,6 +107,7 @@ def process_data(data_path, params):
   start = time()
   MATLAB.cd(str(MATLAB_PATH))
   promise = MATLAB.process_video(frame_paths, pixel_size, str(tmp_csv_path), str(tmp_mask_path), stdout=out, background=True)
+  # MATLAB.process_video(frame_paths, pixel_size, str(tmp_csv_path), str(tmp_mask_path))
   bar = progressbar.ProgressBar(term_width = 35, max_value = progressbar.UnknownLength, widgets=[ progressbar.BouncingBar() ])
   while promise.done() is not True:
     bar.update(1)
@@ -176,6 +178,13 @@ def process_data(data_path, params):
       if captured_frames[pid] < 3:
         # Make the reference frame
         ref_particle_imgs[pid] = particle_imgs[pid].copy()
+
+      if keep_imgs:
+        img_path = (tiff_path / "cells" / pid).resolve()
+        img_path.mkdir(parents=True, exist_ok=True)
+
+        cv2.imwrite(str(img_path / (str(i) + ".tif")), fg)
+
 
   data['mip_sum'] = 0.0
   data['mip_cyto_sum'] = 0.0

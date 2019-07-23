@@ -4,7 +4,7 @@
 Gets data into a format readable by classifiers
 
 Usage:
-  preprocess.py PROCESSOR INPUT [--output-dir=0] [--img-dir=0] [--mip-dir=0] [--output-name=data.csv] [--data-dir=0] [--frame-rate=180] [--filter-window=5.0] [--gamma=0.50] [--channel=2] [--objective=20] [--microscope=SD] [--data-set=0] [--pixel-size=0] [--rolling-ball-size=30] [--img-dir=0]
+  preprocess.py PROCESSOR INPUT [--output-dir=0] [--img-dir=0] [--mip-dir=0] [--output-name=data.csv] [--data-dir=0] [--frame-rate=180] [--filter-window=5.0] [--gamma=0.50] [--channel=2] [--objective=20] [--microscope=SD] [--data-set=0] [--pixel-size=0] [--rolling-ball-size=30] [--keep-imgs=0]
 
 Arguments:
   PROCESSOR The kind of image processor to use (eg, imaris or matlab)
@@ -27,6 +27,7 @@ Options:
   --pixel-size=<int|0> [defaults: 0] Specifying microscope and objective will automatically determine pixel size. If supplied here, that value will be used instead.
   --rolling-ball-size=<int> [defaults: 30] The rolling ball diameter to use for rolling ball subtraction, in um
   --frame-rate=<int> [defaults: 180] The seconds that elapse between frames
+  --keep-imgs=<int> [defaults: 0] Whether to store an image of each particle for each frame
 
 Output:
   A CSV file with processed data
@@ -76,6 +77,8 @@ channel = int(arguments['--channel']) if arguments['--channel'] else 1
 pixel_size = float(arguments['--pixel-size']) if arguments['--pixel-size'] else 1
 rolling_ball_size = int(arguments['--rolling-ball-size']) if arguments['--rolling-ball-size'] else 30
 
+keep_imgs = bool(arguments['--keep-imgs']) if arguments['--keep-imgs'] else False
+
 
 ### Preprocess our data
 params = {
@@ -88,7 +91,8 @@ params = {
   'gamma': gamma,
   'channel': channel,
   'pixel_size': pixel_size,
-  'rolling_ball_size': rolling_ball_size
+  'rolling_ball_size': rolling_ball_size,
+  'keep_imgs': keep_imgs
 }
 
 data = processor.process_data(data_path, params)
