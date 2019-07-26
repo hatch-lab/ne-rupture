@@ -5,7 +5,7 @@
 Uses Jython, FIJI's Python2 interpreter. Note: This is --->Python2<--. The rest of this library uses Python3.
 
 Usage:
-  imaris-stack-maker.py INPUT OUTPUT
+  stack-maker.py INPUT OUTPUT
 
 Arguments:
   INPUT The folder of TIFF files to turn into a Tiff stack; Must include trailing slash

@@ -4,7 +4,7 @@
 Gets data into a format readable by classifiers
 
 Usage:
-  preprocess.py PROCESSOR INPUT [--output-dir=0] [--img-dir=0] [--mip-dir=0] [--output-name=data.csv] [--data-dir=0] [--frame-rate=180] [--filter-window=5.0] [--gamma=0.50] [--channel=2] [--objective=20] [--microscope=SD] [--data-set=0] [--pixel-size=0] [--rolling-ball-size=30] [--keep-imgs=0]
+  preprocess.py PROCESSOR INPUT [--output-dir=0] [--img-dir=0] [--mip-dir=0] [--output-name=data.csv] [--data-dir=0] [--frame-rate=180] [--filter-window=5.0] [--gamma=0.50] [--channel=1] [--objective=20] [--microscope=SD] [--data-set=0] [--pixel-size=0] [--rolling-ball-size=30] [--keep-imgs=0]
 
 Arguments:
   PROCESSOR The kind of image processor to use (eg, imaris or matlab)

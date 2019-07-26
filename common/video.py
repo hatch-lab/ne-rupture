@@ -22,6 +22,20 @@ def crop_frame(frame, x, y, width, height, is_color=False):
   y_radius = int(math.floor(height/2))
   x_radius = int(math.floor(width/2))
 
+  if frame.shape[0] < height:
+    offset = height-frame.shape[0]
+    border_size = ( offset, frame.shape[1], 3 ) if is_color else ( offset, frame.shape[1] )
+    border = np.zeros(border_size, dtype=frame.dtype)
+    frame = np.concatenate((border, frame), axis=0)
+    y += offset
+
+  if frame.shape[1] < width:
+    offset = width-frame.shape[1]
+    border_size = ( frame.shape[0], offset, 3 ) if is_color else ( frame.shape[0], offset )
+    border = np.zeros(border_size, dtype=frame.dtype)
+    frame = np.concatenate((border, frame), axis=1)
+    x += offset
+
   # Check our bounds
   if y-y_radius < 0:
     # We need to add a border to the top
