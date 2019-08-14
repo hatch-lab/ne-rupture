@@ -9,22 +9,6 @@ function FrameStats=get_frame_features(I,t,um,M)
   % t  Time frame index
   % um The number of microns/px
   % M  Where to save the masks for this frame
-  %
-  % Output argument:
-  %
-  % StatsNuc   Structure containing metrics for each individual cell (one
-  % cell per row)
-  % Area: size of the nuclear object (in pixels)
-  % Centroid: x and y coordinates of the centroid of the nucleus
-  % Circularity: index reflecting circularity of the object
-  % Solidity: index reflecting solidity of the object
-  % PixelIdxList: linear indices of pixels of the nuclear object
-  % PixelValues: intensity values of each pixels in the nuclear object
-  % MeanIntensity: mean pixel intensity of the nucleus
-  % CytoValues: intensity values of each pixels in the cytoplasmic object
-  % CytoIntensity: mean pixel intensity of the cytoplasmic object
-  % CellID: arbitrary cell ID of the cell
-  % TimeFrame: time frame index
 
   %% Nuclear segmentation
 
@@ -65,8 +49,8 @@ function FrameStats=get_frame_features(I,t,um,M)
       strcat(num2str(t),".",num2str(j)), % particle_id
       t, % frame
 
-      ProcessedStatsNuc(j).WeightedCentroid(1)*um, % x
-      ProcessedStatsNuc(j).WeightedCentroid(2)*um, % y
+      ProcessedStatsNuc(j).Centroid(1)*um, % x
+      ProcessedStatsNuc(j).Centroid(2)*um, % y
 
       ProcessedStatsCyto(j).WeightedCentroid(1)*um, % weighted_x_cyto
       ProcessedStatsCyto(j).WeightedCentroid(2)*um, % weighted_y_cyto
