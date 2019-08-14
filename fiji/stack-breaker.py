@@ -13,7 +13,6 @@ Arguments:
 """
 import sys
 import os
-import re
 
 from common.docopt import docopt
 
