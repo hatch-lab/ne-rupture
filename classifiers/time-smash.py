@@ -51,26 +51,3 @@ def run(data, conf=False, fast=False):
   data = classify_cells(data, conf)
 
   return data
-
-def get_weights(data, validation_data_path):
-  validation_data = pd.read_csv(str(validation_data_path), header=0, dtype={ 'particle_id': str })
-
-  denominators = {}
-  for event in validation_data['true_event'].unique():
-    num_all_cells = validation_data.loc[(validation_data['true_event'] == event), : ].groupby([ 'data_set', 'particle_id' ]).size().shape[0]
-    denominators[event] = num_all_cells
-    data.loc[:, 'cell_' + event + '_score'] = 0.0
-
-  data = data.groupby([ 'data_set', 'particle_id' ]).apply(get_cell_weights, validation_data, denominators)
-
-  return data
-
-def get_cell_weights(p_data, validation_data, denominators):
-  threshold = np.max(p_data['mip_normalized_sum'])
-
-  for event in validation_data['true_event'].unique():
-    num_cells = validation_data.loc[((validation_data['true_event'] == event) & ( validation_data['mip_normalized_sum'] >= threshold)), :].groupby([ 'data_set', 'particle_id' ]).size().shape[0]
-    p_data.loc[:, 'cell_' + event + '_score'] = num_cells/denominators[event]
-
-  return p_data
-
