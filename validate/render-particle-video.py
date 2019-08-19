@@ -100,10 +100,6 @@ start_frame_i = np.min(p_data['frame'])
 end_frame_i = np.max(p_data['frame'])
 this_frame_i = start_frame_i
 
-# Get our resolution (so we can map x-y coords to pixels)
-frame_file_name = str(this_frame_i).zfill(4) + '.tif'
-frame_path = str((images_path / (data_set + "/" + frame_file_name)).resolve())
-
 ### Loop through and build our movie
 print("  Building movie for \033[1m" + data_set + ":" + particle_id + "\033[0m")
 while(this_frame_i <= end_frame_i):

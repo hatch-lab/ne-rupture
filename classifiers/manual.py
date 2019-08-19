@@ -14,9 +14,15 @@ import pandas as pd
 import json
 from multiprocessing import Pool, cpu_count
 from time import sleep
+from PIL import Image, ImageDraw, ImageFont
+import cv2
 
-NAME = "fixed-cutoff"
-CONF_PATH = (ROOT_PATH / ("classifiers/fixed-cutoff/conf.json")).resolve()
+import common.video as hatchvid
+
+NEED_TIFFS = True
+NAME = "manual"
+CONF_PATH = (ROOT_PATH / ("classifiers/manual/conf.json")).resolve()
+FONT_PATH = (ROOT_PATH / ("common/font.ttf")).resolve()
 
 def process_event_seeds(p_data, conf):
   """
@@ -27,11 +33,11 @@ def process_event_seeds(p_data, conf):
   - Find when recovery/repair begins
 
   Arguments:
-    p_data Panda DataFrame The particle data
+    p_data pd.DataFrame The particle data
     conf dict Cutoffs for various parameters used for finding rupture events
 
   Returns:
-    Panda DataFrame
+    pd.DataFrame
   """
   idx = (p_data['event'] != 'N')
   p_data.loc[idx, 'event_id'] = (p_data.loc[idx,'frame'].diff() > 1).cumsum()
@@ -44,28 +50,111 @@ def process_event_seeds(p_data, conf):
 
   return p_data
 
-def seed_events(data, conf):
+def seed_events(data, tiff_path, conf):
   """
   Seeds rupture events for full classification
 
   Arguments:
-    p_data Panda DataFrame The particle data
+    p_data pd.DataFrame The particle data
+    tiff_path string|Path Path to the TIFFs
     conf dict Cutoffs for various parameters used for finding rupture events
 
   Returns:
-    Panda DataFrame The modified particle data
+    pd.DataFrame The modified particle data
   """
 
-  r_idx = ((data['stationary_median'] <= conf['median_cutoff']) & (data['stationary_area'] >= conf['area_cutoff']))
-  data.loc[r_idx, 'event'] = 'R'
-
-  f_idx = ( (data['event'] == 'R') & (data['stationary_median'] >= conf['confident_median_cutoff']) & (data['nearest_neighbor_distance'] <= conf['neighbor_cutoff']) )
-  data.loc[f_idx, 'event'] = 'N'
-
-  m_idx = ( (data['event'] == 'R') & (data['stationary_sum'] <= conf['sum_cutoff']) )
-  data.loc[m_idx, 'event'] = 'M'
+  data = data.groupby([ 'data_set', 'particle_id' ]).apply(load_ui, Path(tiff_path).resolve(), conf)
+  exit()
 
   return data
+
+def load_ui(p_data, tiff_path, conf):
+  title_font = ImageFont.truetype(str(FONT_PATH), size=15)
+  small_font = ImageFont.truetype(str(FONT_PATH), size=10)
+  data_set = p_data['data_set'].iloc[0]
+  p_id = p_data['particle_id'].iloc[0]
+
+  p_data.sort_values('frame')
+
+  start_frame_i = np.min(p_data['frame'])
+  end_frame_i = np.max(p_data['frame'])
+  this_frame_i = start_frame_i
+
+  p_event_labels = {
+    'N': '',
+    'R': 'Rupture',
+    'M': 'Mitosis',
+    'X': 'Apoptosis'
+  }
+
+
+  while(this_frame_i <= end_frame_i):
+    coords_filter = p_data['frame'] == this_frame_i
+    coords = p_data[coords_filter]
+
+    data_set = coords['data_set'].iloc[0]
+    pid = coords['particle_id'].iloc[0]
+    current_event = coords['event'].iloc[0]
+
+    frame_file_name = str(this_frame_i).zfill(4) + '.tif'
+    frame_path = (tiff_path / (data_set + "/" + frame_file_name)).resolve()
+
+    if coords['frame'].count() <= 0 or not frame_path.exists(): # We're missing a frame
+      continue
+
+    raw_frame = cv2.imread(str(frame_path), cv2.IMREAD_GRAYSCALE)
+
+    x = int(round(coords['x'].iloc[0]/coords['x_conversion'].iloc[0]))
+    y = int(round(coords['y'].iloc[0]/coords['y_conversion'].iloc[0]))
+
+    # Crop down to just this particle
+    frame = hatchvid.crop_frame(raw_frame, x, y, conf['movie_width'], conf['movie_height'])
+    frame = cv2.resize(frame, None, fx=conf['movie_scale_factor'], fy=conf['movie_scale_factor'], interpolation=cv2.INTER_CUBIC)
+
+    # Add a space for text
+    frame = np.concatenate((np.zeros(( 40, frame.shape[1]), dtype=frame.dtype), frame), axis=0)
+
+    # Make frame text
+    title = pid
+    hours = math.floor(coords['time'].iloc[0] / 3600)
+    minutes = math.floor((coords['time'].iloc[0] - (hours*3600)) / 60)
+    seconds = math.floor((coords['time'].iloc[0] - (hours*3600)) % 60)
+
+    label = "{:02d}h{:02d}'{:02d}\" ({:d})".format(hours, minutes, seconds, this_frame_i)
+    
+    # Describe the current event state
+    label += " " + p_event_labels[current_event]
+
+    # Now add text
+    img = Image.fromarray(frame)
+    draw = ImageDraw.Draw(img)
+
+    controls = "[<-] Prev [->] Next \n[R] Rupture [M] Mitosis [X] Apoptosis [N] None"
+
+    draw.text((10, 10), title, fill='rgb(255,255,255)', font=title_font)
+    draw.text((10, 30), label, fill='rgb(255,255,255)', font=small_font)
+    draw.text((10, frame.shape[0]-40), controls, fill='rgb(255,255,255)', font=small_font)
+
+    # Get it back into OpenCV format
+    frame = np.array(img)
+
+    cv2.imshow(p_id, frame)
+    c = cv2.waitKey(0)
+    if c == 2:
+      this_frame_i -= 1
+      if this_frame_i < start_frame_i:
+        this_frame_i = start_frame_i
+
+    elif c == 3:
+      this_frame_i += 1
+
+    elif chr(c & 255) in [ 'r', 'm', 'x', 'n' ]:
+      p_data.loc[(p_data['frame'] == this_frame_i), 'event'] = chr(c & 255).upper()
+
+    if 'q' == chr(c & 255):
+      exit()
+
+  return p_data
 
 def extend_events(p_data, conf):
   """
@@ -275,33 +364,17 @@ def apply_parallel(grouped, message,  fn, *args):
   print_progress_bar(message, total, 0)
   return pd.concat(rs.get(), sort=False)
 
-# def find_neighbor_births(n_data, data):
-#   data_set = n_data['data_set'].values[0]
-#   nearest_neighbor = n_data['nearest_neighbor'].values[0]
-#   neighbor_idx = ( (data['data_set'] == data_set) & (data['particle_id'] == nearest_neighbor) )
-#   nearest_neighbor_birth = np.min(data.loc[neighbor_idx, 'time'])
-#   n_data.loc[:,'nearest_neighbor_birth'] = nearest_neighbor_birth
-#   n_data.loc[:,'nearest_neighbor_delta'] = n_data['time']-nearest_neighbor_birth
-
-#   return n_data
-
-def run(data, conf=False, fast=False):
+def run(data, tiff_path, conf=False, fast=False):
   if not conf:
     with CONF_PATH.open(mode='r') as file:
       conf = json.load(file)
 
   orig_data = data.copy()
 
-  # Find nearest neighbor distances
-  # if not fast:
-  #   data = apply_parallel(data.groupby([ 'data_set', 'frame' ]), "Finding nearest neighbors", find_nearest_neighbor_distances)
-  #   data = apply_parallel(data.groupby([ 'data_set', 'nearest_neighbor']), "Finding nearest neighbor births", find_neighbor_births, orig_data)
-
   # Classify
   data.loc[:,'event'] = 'N'
   data.loc[:,'event_id'] = -1
-  data = seed_events(data, conf)
-  # p_data = seed_mitoses(p_data, conf) # Just skip for now
+  data = seed_events(data, tiff_path, conf=conf)
 
   if not fast:
     data = apply_parallel(data.groupby([ 'data_set', 'particle_id' ]), "Classifying particles", process_event_seeds, conf)

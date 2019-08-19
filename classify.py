@@ -71,7 +71,10 @@ classifier = import_module("classifiers." + classifier_name)
 ### Read our data
 data = pd.read_csv(str(data_file_path), header=0, dtype={ 'particle_id': str })
 
-classified_data = classifier.run(data, conf)
+if classifier.NEED_TIFFS:
+  classified_data = classifier.run(data, tiff_path, conf=conf)
+else:
+  classified_data = classifier.run(data, conf)
 
 output_path.mkdir(exist_ok=True)
 output_file_path = (output_path / (output_name)).resolve()
