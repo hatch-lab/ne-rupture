@@ -1,6 +1,6 @@
 {
-  "movie_width": 100,
-  "movie_height": 100,
+  "movie_width": 200,
+  "movie_height": 200,
   "movie_scale_factor": 3,
 
   "baseline_median_scale_factor": 0.92,
