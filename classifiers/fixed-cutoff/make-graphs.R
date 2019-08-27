@@ -48,6 +48,8 @@ if(length(new_packages)) {
 
 lapply(package_list, require, character.only = TRUE)
 
+theme_set(theme_cowplot())
+
 raw_conf <- readLines(conf_path, warn=F)
 classifier_conf <- fromJSON(raw_conf)
 

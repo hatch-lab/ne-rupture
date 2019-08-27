@@ -15,6 +15,7 @@ import json
 from multiprocessing import Pool, cpu_count
 from time import sleep
 
+NEED_TIFFS = False
 NAME = "fixed-cutoff"
 CONF_PATH = (ROOT_PATH / ("classifiers/fixed-cutoff/conf.json")).resolve()
 
