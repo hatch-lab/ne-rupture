@@ -17,6 +17,7 @@ import json
 from multiprocessing import Pool, cpu_count
 from time import sleep
 
+NEED_TIFFS = False
 NAME = "masks"
 CONF_PATH = (ROOT_PATH / ("classifiers/masks/conf.json")).resolve()
 

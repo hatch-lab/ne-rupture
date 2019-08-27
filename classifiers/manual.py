@@ -50,6 +50,7 @@ def process_event_seeds(p_data, conf):
 
   return p_data
 
+
 def seed_events(data, tiff_path, conf):
   """
   Seeds rupture events for full classification
@@ -72,212 +73,127 @@ def seed_events(data, tiff_path, conf):
     'X': 'Apoptosis'
   }
 
-  data_sets = data['data_set'].unique()
-  data_set_i = 0
+  data.sort_values([ 'data_set', 'particle_id', 'frame' ], inplace=True)
+  data.reset_index(inplace=True, drop=True)
 
-  while(data_set_i < len(data_sets)):
-    if data_set_i < 0:
-      # Break out of this data set and back track to previous data set
-      data_set_i = 0
-      continue
+  idx = 0
+  while(idx < len(data.index)):
+    if idx < 0:
+      idx = 0
 
-    data_set = data_sets[data_set_i]
-    particle_ids = data.loc[( data['data_set'] == data_set ), 'particle_id'].unique()
+    data_set = data['data_set'].iloc[idx]
+    current_event = data['event'].iloc[idx]
+    frame = data['frame'].iloc[idx]
 
-    p_id_i = 0
-
-    while(p_id_i < len(particle_ids)):
-      if p_id_i < 0:
-        # Break out of this data set and back track to previous data set
-        data_set_i -= 1
-        break
-
-      p_id = particle_ids[p_id_i]
-
-      p_data = data.loc[( (data['data_set'] == data_set) & ( data['particle_id'] == p_id ) )]
-
-      p_data.sort_values('frame')
-
-      start_frame_i = np.min(p_data['frame'])
-      end_frame_i = np.max(p_data['frame'])
-      frame_i = start_frame_i
-
-      while(frame_i <= end_frame_i):
-        coords_filter = (p_data['frame'] == frame_i)
-
-        coords = p_data[coords_filter]
-
-        if len(coords.index) <= 0: # We're missing a frame
-          frame_i += 1
-          continue
-
-        current_event = coords['event'].iloc[0]
-
-        frame_file_name = str(frame_i).zfill(4) + '.tif'
-        frame_path = (tiff_path / (data_set + "/" + frame_file_name)).resolve()
-
-        if not frame_path.exists(): # We're missing a frame
-          frame_i += 1
-          continue
-
-        raw_frame = cv2.imread(str(frame_path), cv2.IMREAD_GRAYSCALE)
-
-        x = int(round(coords['x'].iloc[0]/coords['x_conversion'].iloc[0]))
-        y = int(round(coords['y'].iloc[0]/coords['y_conversion'].iloc[0]))
-
-        # Crop down to just this particle
-        frame = hatchvid.crop_frame(raw_frame, x, y, conf['movie_width'], conf['movie_height'])
-        frame = cv2.resize(frame, None, fx=conf['movie_scale_factor'], fy=conf['movie_scale_factor'], interpolation=cv2.INTER_CUBIC)
-
-        # Add a space for text
-        frame = np.concatenate((np.zeros(( 40, frame.shape[1]), dtype=frame.dtype), frame), axis=0)
-
-        # Make frame text
-        title = p_id
-
-        # Describe the current event state
-        title += " " + p_event_labels[current_event]
-
-        hours = math.floor(coords['time'].iloc[0] / 3600)
-        minutes = math.floor((coords['time'].iloc[0] - (hours*3600)) / 60)
-        seconds = math.floor((coords['time'].iloc[0] - (hours*3600)) % 60)
-
-        label = "{:02d}h{:02d}'{:02d}\" ({:d})".format(hours, minutes, seconds, frame_i)
-
-        # Now add text
-        img = Image.fromarray(frame)
-        draw = ImageDraw.Draw(img)
-
-        controls = "[<-] Prev [->] Next [S] Skip \n[R] Rupture [M] Mitosis [X] Apoptosis [N] None"
-
-        draw.text((10, 10), title, fill='rgb(255,255,255)', font=title_font)
-        draw.text((10, 30), label, fill='rgb(255,255,255)', font=small_font)
-        draw.text((10, frame.shape[0]-40), controls, fill='rgb(255,255,255)', font=small_font)
-
-        # Get it back into OpenCV format
-        frame = np.array(img)
-
-        cv2.imshow('Cell', frame)
-        c = cv2.waitKey(0)
-        if c == 2:
-          frame_i -= 1
-          if frame_i < start_frame_i:
-            # End looping through frames, backtrack to previous particle
-            p_id_i -= 1
-            break 
-
-        elif c == 3:
-          frame_i += 1
-
-        elif chr(c & 255) == 's':
-          # Just skip the rest of this cell
-          p_id_i += 1
-          break
-
-        elif chr(c & 255) in [ 'r', 'm', 'x', 'n' ]:
-          data_idx = ( (data['frame'] == frame_i ) & (data['particle_id'] == p_id) & (data['data_set'] == data_set) )
-          data.loc[data_idx, 'event'] = chr(c & 255).upper()
-          p_data = data.loc[( (data['data_set'] == data_set) & ( data['particle_id'] == p_id ) )]
-
-        if 'q' == chr(c & 255):
-          exit()
-
-    data_set_i += 1
-
-  cv2.destroyAllWindows()
-
-  return data
-
-def load_ui(p_data, tiff_path, conf):
-  
-
-  p_data.sort_values('frame')
-
-  start_frame_i = np.min(p_data['frame'])
-  end_frame_i = np.max(p_data['frame'])
-  this_frame_i = start_frame_i
-
-  p_event_labels = {
-    'N': '',
-    'R': 'Rupture',
-    'M': 'Mitosis',
-    'X': 'Apoptosis'
-  }
-
-  while(this_frame_i <= end_frame_i):
-    coords_filter = (p_data['frame'] == this_frame_i)
-    coords = p_data[coords_filter]
-
-    if len(coords.index) <= 0: # We're missing a frame
-      this_frame_i += 1
-      continue
-
-    data_set = coords['data_set'].iloc[0]
-    pid = coords['particle_id'].iloc[0]
-    current_event = coords['event'].iloc[0]
-
-    frame_file_name = str(this_frame_i).zfill(4) + '.tif'
+    frame_file_name = str(frame).zfill(4) + '.tif'
     frame_path = (tiff_path / (data_set + "/" + frame_file_name)).resolve()
-
-    if not frame_path.exists(): # We're missing a frame
-      this_frame_i += 1
-      continue
 
     raw_frame = cv2.imread(str(frame_path), cv2.IMREAD_GRAYSCALE)
 
-    x = int(round(coords['x'].iloc[0]/coords['x_conversion'].iloc[0]))
-    y = int(round(coords['y'].iloc[0]/coords['y_conversion'].iloc[0]))
+    x = int(round(data['x'].iloc[idx]/data['x_conversion'].iloc[idx]))
+    y = int(round(data['y'].iloc[idx]/data['y_conversion'].iloc[idx]))
 
     # Crop down to just this particle
-    frame = hatchvid.crop_frame(raw_frame, x, y, conf['movie_width'], conf['movie_height'])
-    frame = cv2.resize(frame, None, fx=conf['movie_scale_factor'], fy=conf['movie_scale_factor'], interpolation=cv2.INTER_CUBIC)
+    crop_frame = hatchvid.crop_frame(raw_frame, x, y, conf['movie_width'], conf['movie_height'])
+    crop_frame = cv2.resize(crop_frame, None, fx=conf['movie_scale_factor'], fy=conf['movie_scale_factor'], interpolation=cv2.INTER_CUBIC)
 
     # Add a space for text
-    frame = np.concatenate((np.zeros(( 40, frame.shape[1]), dtype=frame.dtype), frame), axis=0)
+    crop_frame = np.concatenate((np.zeros(( 40, crop_frame.shape[1]), dtype=crop_frame.dtype), crop_frame), axis=0)
 
     # Make frame text
-    title = pid
+    title = data['particle_id'].iloc[idx]
+
     # Describe the current event state
     title += " " + p_event_labels[current_event]
 
-    hours = math.floor(coords['time'].iloc[0] / 3600)
-    minutes = math.floor((coords['time'].iloc[0] - (hours*3600)) / 60)
-    seconds = math.floor((coords['time'].iloc[0] - (hours*3600)) % 60)
+    time = data['time'].iloc[idx]
 
-    label = "{:02d}h{:02d}'{:02d}\" ({:d})".format(hours, minutes, seconds, this_frame_i)
+    hours = math.floor(time / 3600)
+    minutes = math.floor((time - (hours*3600)) / 60)
+    seconds = math.floor((time - (hours*3600)) % 60)
+
+    label = "{:02d}h{:02d}'{:02d}\" ({:d})".format(hours, minutes, seconds, frame)
 
     # Now add text
-    img = Image.fromarray(frame)
+    img = Image.fromarray(crop_frame)
     draw = ImageDraw.Draw(img)
 
-    controls = "[<-] Prev [->] Next \n[R] Rupture [M] Mitosis [X] Apoptosis [N] None"
+    controls = "[<-] Prev [->] Next [S] Skip \n[R] Rupture [M] Mitosis [X] Apoptosis [N] None"
 
     draw.text((10, 10), title, fill='rgb(255,255,255)', font=title_font)
     draw.text((10, 30), label, fill='rgb(255,255,255)', font=small_font)
-    draw.text((10, frame.shape[0]-40), controls, fill='rgb(255,255,255)', font=small_font)
+    draw.text((10, crop_frame.shape[0]-40), controls, fill='rgb(255,255,255)', font=small_font)
 
     # Get it back into OpenCV format
-    frame = np.array(img)
+    crop_frame = np.array(img)
 
-    cv2.imshow(p_id, frame)
+    cv2.imshow('Cell', crop_frame)
+
     c = cv2.waitKey(0)
     if c == 2:
-      this_frame_i -= 1
-      if this_frame_i < start_frame_i:
-        this_frame_i = start_frame_i
+      idx -= 1
 
     elif c == 3:
-      this_frame_i += 1
+      idx += 1
+
+    elif c == 0:
+      idx -= 3
+
+    elif c == 1:
+      idx += 3
+
+    elif chr(c & 255) == 'p':
+      # Just skip to the prev cell
+      particle_ids = data.loc[(data['data_set'] == data_set), 'particle_id'].unique().tolist()
+      particle_id = data['particle_id'].iloc[idx]
+      prev_particle_id_i = particle_ids.index(particle_id)-1
+
+      if prev_particle_id_i < 0:
+        data_sets = data['data_set'].unique().tolist()
+        prev_data_set_i = data_sets.index(data_set)-1
+
+        if prev_data_set_i < 0:
+          # We're at the beginning
+          idx = 0
+          continue
+
+        prev_data_set = data_sets[prev_data_set_i]
+        idx = np.max(data.index[(data['data_set'] == prev_data_set)].tolist())
+
+      else:
+        prev_particle_id = particle_ids[prev_particle_id_i]
+        idx = np.max(data.index[( (data['data_set'] == data_set) & (data['particle_id'] == prev_particle_id) )].tolist())
+
+    elif chr(c & 255) == 's':
+      # Just skip the rest of this cell
+      particle_ids = data.loc[(data['data_set'] == data_set), 'particle_id'].unique().tolist()
+      particle_id = data['particle_id'].iloc[idx]
+      next_particle_id_i = particle_ids.index(particle_id)+1
+
+      if next_particle_id_i >= len(particle_ids):
+        data_sets = data['data_set'].unique().tolist()
+        next_data_set_i = data_sets.index(data_set)+1
+
+        if next_data_set_i >= len(data_sets):
+          # We're done
+          break
+
+        next_data_set = data_sets[next_data_set_i]
+        idx = np.min(data.index[(data['data_set'] == next_data_set)].tolist())
+
+      else:
+        next_particle_id = particle_ids[next_particle_id_i]
+        idx = np.min(data.index[( (data['data_set'] == data_set) & (data['particle_id'] == next_particle_id) )].tolist())
 
     elif chr(c & 255) in [ 'r', 'm', 'x', 'n' ]:
-      p_data.loc[(p_data['frame'] == this_frame_i), 'event'] = chr(c & 255).upper()
+      data.at[idx, 'event'] = chr(c & 255).upper()
 
     if 'q' == chr(c & 255):
       exit()
 
   cv2.destroyAllWindows()
 
-  return p_data
+  return data
 
 def extend_events(p_data, conf):
   """
@@ -325,8 +241,7 @@ def extend_events(p_data, conf):
       # We don't want to run over any other events that have already been seeded
       next_event_idx = (
         (p_data['frame'] < stop) & 
-        (p_data['event_id'] != -1) & 
-        (p_data['event_id'] != event_id)
+        (p_data['event_id'] == (event_id+1))
       )
       if next_event_idx.any():
         stop = np.min(p_data.loc[next_event_idx, 'frame'])
@@ -347,9 +262,9 @@ def extend_events(p_data, conf):
 
       # We don't want to run over any other events that have already been seeded
       prev_event_idx = (
-        (p_data['frame'] > start) &
+        (p_data['frame'] >= start) &
         (p_data['event_id'] != -1) &
-        (p_data['event_id'] != event_id)
+        (p_data['event_id'] == (event_id-1))
       )
       if prev_event_idx.any():
         start = np.max(p_data.loc[prev_event_idx, 'frame'])
@@ -396,6 +311,10 @@ def find_event_recoveries(p_data, conf):
     event = p_data.loc[(p_data['event_id'] == event_id),:]
     event_type = event['event'].iloc[0]
     recovery_label = conf['recoveries'][event_type] if event_type in conf['recoveries'] else event_type
+
+    if recovery_label == event_type:
+      # We don't need to do anything
+      continue
     
     idx = (event['smoothed'].diff() > 0)
 

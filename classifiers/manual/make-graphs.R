@@ -200,34 +200,40 @@ for(m in 1:length(data_sets)) {
     }
     
     # Generate plots
-    cyto_limit <- max(c(
-      abs(min(c(df$mean_raw_cyto*1.5, df$mean_raw_nuc*1.5), na.rm=T)), 
-      abs(max(c(df$mean_raw_cyto*1.5, df$mean_raw_nuc*1.5), na.rm=T))
+    baseline_median <- mean(df$stationary_median[which(df$event == "N")], na.rm=T)
+    median_limit <- max(c(
+      abs(min(df$stationary_median*1.5, na.rm=T)), 
+      abs(max(df$stationary_median*1.5, na.rm=T))
     ), na.rm=T)
-    raw_plot <- base_plot +
-      geom_line(aes(x=time, y=mean_raw_cyto)) +
-      geom_line(aes(x=time, y=mean_raw_nuc)) +
+    
+    median_plot <- base_plot +
+      geom_line(aes(x=time, y=stationary_median)) +
       ggtitle(paste0(data_set, ":", pid)) +
-      scale_y_continuous(name="Cytoplasmic/nuclear mean", limits=c(-cyto_limit, cyto_limit)) +
-      scale_x_continuous(name="", labels=format_time_labels(), sec.axis = sec_axis(~./frame_rate, name="Frame", labels=format_frame_labels())) 
+      scale_y_continuous(name="Median", limits=c(-median_limit, median_limit)) +
+      scale_x_continuous(name="", labels=format_time_labels(), sec.axis = sec_axis(~./frame_rate, name="Frame", labels=format_frame_labels())) +
+      annotate(geom="segment", x=-Inf, xend=Inf, y=baseline_median, yend=baseline_median, linetype="dashed", alpha=0.7)
     if(have_true_events) {
-      raw_plot <- median_plot +
+      median_plot <- median_plot +
         annotate(geom="text", x=0.1, y=0.05, label="Predicted", alpha=0.8, hjust=0) +
         annotate(geom="text", x=0.1, y=-0.05, label="True", alpha=0.8, hjust=0)
     }
 
-    ratio_cutoff <- classifier_conf[['ratio_cutoff']]
-    ratio_annotation <- ratio_cutoff
-    ratio_plot <- base_plot +
-      geom_line(aes(x=time, y=ratio)) +
-      annotate(geom="segment", x=-Inf, xend=Inf, y=ratio_annotation, yend=ratio_annotation, color="red", alpha=0.7) +
-      scale_y_continuous(name="Cytoplasmic mean/nuclear mean") +
+    baseline_area <- mean(df$stationary_area[which(df$event == "N")], na.rm=T)
+    area_limit <- max(c(
+      abs(min(df$stationary_area*1.5, na.rm=T)), 
+      abs(max(df$stationary_area*1.5, na.rm=T))
+    ), na.rm=T)
+    
+    area_plot <- base_plot +
+      geom_line(aes(x=time, y=stationary_area)) +
+      annotate(geom="segment", x=-Inf, xend=Inf, y=baseline_area, yend=baseline_area, linetype="dashed", alpha=0.7) +
+      scale_y_continuous(name="Area", limits=c(-area_limit, area_limit)) +
       scale_x_continuous(name="", labels=format_time_labels(), sec.axis = sec_axis(~./frame_rate, name="", labels=format_frame_labels()))
     
-    plots[[(length(plots)+1)]] <- plot_grid(raw_plot, ratio_plot, nrow=2, align="v", rel_heights=c(1.4,1.8))
+    plots[[(length(plots)+1)]] <- plot_grid(median_plot, area_plot, nrow=2, align="v", rel_heights=c(1.4,1.8))
 
     # Plots to put under movies
-    movie_plot <- ggplot(df, aes(x=frame, y=mean_raw_cyto))
+    movie_plot <- ggplot(df, aes(x=frame, y=stationary_median))
     for(i in 1:nrow(pred_groups)) {
       if(!(pred_groups$event[[i]] %in% c("R", "E"))) {
         next
@@ -258,7 +264,7 @@ for(m in 1:length(data_sets)) {
       } 
     }
     movie_plot <- movie_plot + 
-      geom_line(aes(x=frame, y=mean_raw_nuc), color="#ff4500", alpha=0.9, size=0.1) +
+      geom_line(aes(x=frame, y=stationary_area), color="#ff4500", alpha=0.9, size=0.1) +
       geom_line(color="#00ffff", alpha=0.8, size=0.1) +
       scale_x_continuous(name="", expand=c(0,0)) +
       scale_y_continuous(name="", expand=c(0,0)) +
