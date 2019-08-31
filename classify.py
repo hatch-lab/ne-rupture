@@ -4,21 +4,22 @@
 Classifies particle events using a given classifier
 
 Usage:
-  classify.py CLASSIFIER INPUT OUTPUT [--input-name=data.csv] [--output-name=results.csv] [--skip-graphs=0] [--img-dir=0] [--conf=0] [--max-processes=None]
+  classify.py CLASSIFIER INPUT [--input-name=<string>] [--output-name=<string>] [--output-dir=<string>] [--input-dir=<string>] [--skip-graphs] [--img-dir=<string>] [--conf=<string>]
 
 Arguments:
   CLASSIFIER The name of the classifier to test
-  INPUT Path to the directory containing the processed output file
-  OUTPUT Path to where the classified data CSV file should be saved
+  INPUT Path to the directory containing particle data
 
 Options:
   -h --help Show this screen.
   --version Show version.
-  --input-name=<string> [defaults: data.csv] The name of the input CSV file
-  --output-name=<string> [defaults: results.csv] The name of the resulting CSV file
-  --skip-graphs=<bool> [defaults: False] If True, won't output graphs or videos
-  --img-dir=<string> [defaults: INPUT/../images] The directory that contains TIFF images of each frame, for outputting videos.
-  --conf=<string> [defaults: None] Override configuration options in conf.json with a JSON string.
+  --input-name=<string>  [default: data.csv] The name of the input CSV file
+  --output-name=<string>  [default: results.csv] The name of the resulting CSV file
+  --output-dir=<string>  [default: output] The name of the subdirectory in which to store output
+  --input-dir=<string>  [default: input] The name of the subdirectory in which to find the inpute CSV file
+  --skip-graphs  Whether to skip producing graphs or videos
+  --img-dir=<string>  [default: images] The subdirectory that contains TIFF images of each frame, for outputting videos.
+  --conf=<string>  Override configuration options in conf.json with a JSON string.
 
 Output:
   Prints alignment scores, their mean, and their SD.
@@ -43,29 +44,45 @@ import pandas as pd
 import re
 import subprocess
 
+from schema import Schema, And, Or, Use, SchemaError, Optional, Regex
+
 arguments = docopt(__doc__, version=get_version())
+
+schema = Schema({
+  'CLASSIFIER': And(len, lambda n: (ROOT_PATH / ('classifiers/' + str(n) + '.py')).is_file(), error='That classifier does not exist'),
+  'INPUT': And(len, lambda n: os.path.exists(n), error='INPUT does not exist'),
+  '--input-name': len,
+  '--output-name': len,
+  '--output-dir': len,
+  '--input-dir': len,
+  Optional('--skip-graphs'): bool,
+  '--img-dir': len,
+  '--conf': Or(None, len)
+})
+
+try:
+  arguments = schema.validate(arguments)
+except SchemaError as error:
+  print(error)
+  exit(1)
 
 ### Constant for getting our base input dir
 QA_PATH  = (ROOT_PATH / ("validate/qa.py")).resolve()
 
 ### Arguments and inputs
-classifier_name = re.sub(r'[^a-zA-Z0-9\-\_\.\+]', '', arguments['CLASSIFIER'])
-if classifier_name != arguments['CLASSIFIER']:
-  print(colorize("yellow", "Classifier input has been sanitized to " + classifier_name))
+classifier_name = arguments['CLASSIFIER']
 
-input_path = (ROOT_PATH / (arguments['INPUT'])).resolve()
-output_path = (ROOT_PATH / (arguments['OUTPUT'])).resolve()
-data_file_path = input_path / (arguments['--input-name']) if arguments['--input-name'] else input_path / "data.csv"
-tiff_path = input_path / (arguments['--img-dir']) if arguments['--img-dir'] else (input_path / ("../images/")).resolve()
-output_name = arguments['--output-name'] if arguments['--output-name'] else "results.csv"
+input_root = (ROOT_PATH / (arguments['INPUT'])).resolve()
+input_path = input_root / (arguments['--input-dir'])
+output_path = input_root / (arguments['--output-dir'])
+tiff_path = input_root / (arguments['--img-dir'])
+
+data_file_path = input_path / (arguments['--input-name'])
+output_name = arguments['--output-name']
 skip_graphs = True if arguments['--skip-graphs'] else False
 conf = json.loads(arguments['--conf']) if arguments['--conf'] else False
 
 ### Get our classifier
-if not (ROOT_PATH / ("classifiers/" + classifier_name + ".py")).exists():
-  print(colorize("red", "No such classifier exists"))
-  exit(1)
-
 classifier = import_module("classifiers." + classifier_name)
 
 ### Read our data

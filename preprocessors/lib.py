@@ -13,6 +13,24 @@ from scipy import spatial
 from statsmodels.tsa.stattools import kpss
 
 def base_transform(data, params):
+  """
+  Generate information we always want
+
+  Filters out tracks < 8 hours
+  Generates normalized median values (median / avg median per frame)
+  Generates normalized sum values (sum / avg median per frame)
+  Scales area to be between 0-1 for each cell
+  Generates stationary normalized median, normalized sum, scaled and area values
+  Generates a z-score for cytoplasmic intensity
+  Finds velocities for scaled area, normalized median, normalized sum, x, and y
+
+  Arguments:
+    data pandas.DataFrame The existing data
+    params dict A dictionary of preprocessor params
+
+  Return:
+    pandas.DataFrame The modified data frame
+  """
   data_set = params['data_set']
   frame_rate = params['frame_rate']
 
