@@ -118,7 +118,7 @@ def seed_events(data, tiff_path, conf):
     img = Image.fromarray(crop_frame)
     draw = ImageDraw.Draw(img)
 
-    controls = "[<-] Prev [->] Next [S] Skip \n[R] Rupture [M] Mitosis [X] Apoptosis [N] None"
+    controls = "[<] Prev [>] Next [S] Skip \n[R] Rupture [M] Mitosis [X] Apoptosis [N] None"
 
     draw.text((10, 10), title, fill='rgb(255,255,255)', font=title_font)
     draw.text((10, 30), label, fill='rgb(255,255,255)', font=small_font)
@@ -129,20 +129,20 @@ def seed_events(data, tiff_path, conf):
 
     cv2.imshow('Cell', crop_frame)
 
-    c = cv2.waitKey(0)
-    if c == 2:
+    c = chr(cv2.waitKey(0) & 255)
+    if c == ',':
       idx -= 1
 
-    elif c == 3:
+    elif c == '.':
       idx += 1
 
-    elif c == 0:
+    elif c == '<':
       idx -= 3
 
-    elif c == 1:
+    elif c == '>':
       idx += 3
 
-    elif chr(c & 255) == 'p':
+    elif c == 'p':
       # Just skip to the prev cell
       particle_ids = data.loc[(data['data_set'] == data_set), 'particle_id'].unique().tolist()
       particle_id = data['particle_id'].iloc[idx]
@@ -164,7 +164,7 @@ def seed_events(data, tiff_path, conf):
         prev_particle_id = particle_ids[prev_particle_id_i]
         idx = np.max(data.index[( (data['data_set'] == data_set) & (data['particle_id'] == prev_particle_id) )].tolist())
 
-    elif chr(c & 255) == 's':
+    elif c == 's':
       # Just skip the rest of this cell
       particle_ids = data.loc[(data['data_set'] == data_set), 'particle_id'].unique().tolist()
       particle_id = data['particle_id'].iloc[idx]
@@ -185,10 +185,10 @@ def seed_events(data, tiff_path, conf):
         next_particle_id = particle_ids[next_particle_id_i]
         idx = np.min(data.index[( (data['data_set'] == data_set) & (data['particle_id'] == next_particle_id) )].tolist())
 
-    elif chr(c & 255) in [ 'r', 'm', 'x', 'n' ]:
-      data.at[idx, 'event'] = chr(c & 255).upper()
+    elif c in [ 'r', 'm', 'x', 'n' ]:
+      data.at[idx, 'event'] = c.upper()
 
-    if 'q' == chr(c & 255):
+    elif c == 'q':
       exit()
 
   cv2.destroyAllWindows()
@@ -215,8 +215,15 @@ def extend_events(p_data, conf):
   convergence_limit = conf['convergence_limit']
 
   for event_id in event_ids:
-    no_event_idx = (p_data['event'] == 'N')
     event_type = p_data[(p_data['event_id'] == event_id)]['event'].values[0]
+
+    if event_type == 'X':
+      frame = np.max(p_data.loc[(p_data['event_id'] == event_id), 'frame'])
+      p_data.loc[(p_data['frame' >= frame]), 'event'] = event_type
+      p_data.loc[(p_data['frame' >= frame]), 'event_id'] = event_id
+      continue
+
+    no_event_idx = (p_data['event'] == 'N')
     baseline_median = np.mean(p_data.loc[no_event_idx, 'stationary_median']) if no_event_idx.any() else 0
     old_baseline_median = 1E6
 
