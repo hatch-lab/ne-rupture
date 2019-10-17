@@ -12,7 +12,7 @@ Arguments:
 
 Options:
   -h --help Show this screen.
-  --output-dir=<string>  [default: output] The subdirectory to save the resulting CSV file
+  --output-dir=<string>  [default: input] The subdirectory to save the resulting CSV file
   --output-name=<string>  [default: data.csv] The name of the resulting CSV file
   --img-dir=<string>  [defaults: INPUT/images/(data_set)] The path to TIFF files
   --mip-dir=<string>  [defaults: INPUT/images/(data_set)/mip] The path to MIP files
@@ -21,7 +21,7 @@ Options:
   --gamma=<float>  [default: 0.50] The gamma correction to use
   --channel=<int>  [default: 1] The channel to keep (ie, the NLS-3xGFP channel)
   --data-set=<string>  The unique identifier for this data set. If none is supplied, the base file name of each TIFF will be used.
-  --pixel-size=<int>  [default: 1] Pixels per micron. If 0, will attempt to detect automatically.
+  --pixel-size=<float>  [default: 1] Pixels per micron. If 0, will attempt to detect automatically.
   --rolling-ball-size=<int>  [default: 100] The rolling ball diameter to use for rolling ball subtraction, in um
   --frame-rate=<int>  [default: 180] The seconds that elapse between frames
   --keep-imgs  Whether to store an image of each particle for each frame
@@ -61,7 +61,7 @@ schema = Schema({
   '--gamma': And(Use(float), lambda n: n > 0, error='--gamma must be > 0'),
   '--channel': And(Use(int), lambda n: n > 0),
   '--data-set': Or(None, len),
-  '--pixel-size': And(Use(int), lambda n: n >= 0, error='--pixel-size must be > 0'),
+  '--pixel-size': And(Use(float), lambda n: n >= 0, error='--pixel-size must be > 0'),
   '--rolling-ball-size': And(Use(int), lambda n: n > 0),
   '--frame-rate': And(Use(int), lambda n: n > 0),
   Optional('--keep-imgs'): bool
