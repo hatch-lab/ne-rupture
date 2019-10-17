@@ -31,7 +31,6 @@ import progressbar
 
 import matlab.engine
 
-from scipy import io as sio
 from skimage import exposure, img_as_ubyte, filters, morphology
 from skimage.util import crop, pad
 from skimage.external import tifffile
@@ -76,7 +75,7 @@ def process_image(img, channel, filter_window, gamma, pixel_size, rolling_ball_s
     channel int The channel to extract
     filter_window int The radius of the median filter window (px)
     gamma float The gamma to set the image to
-    pixel_size int The pixels / micron for this iamge
+    pixel_size float The pixels / micron for this iamge
     rolling_ball_size int The radius of the disk used for filtering out the background (um). (Not actually rolling ball subtraction; I am faking it with a median filter)
 
   Return:
@@ -105,12 +104,13 @@ def process_image(img, channel, filter_window, gamma, pixel_size, rolling_ball_s
   # Rolling ball background subtraction
   # cv2_rolling_ball.subtract_background_rolling_ball is ridonculously slow
   # Gonna fake it
-  bg = filters.median(img, selem=morphology.disk(rolling_ball_size/pixel_size))
+  bg = filters.median(img, selem=morphology.disk(rolling_ball_size*pixel_size))
   img = img.astype(np.int16)
   img = img-bg
   img[img < 0] = 0
   img = img.astype(np.uint8)
-  # img = subtract_background_rolling_ball(img, rolling_ball_size/pixel_size, light_background=False, use_paraboloid=False, do_presmooth=False)
+  img = exposure.rescale_intensity(img)
+  # img = subtract_background_rolling_ball(img, rolling_ball_size*pixel_size, light_background=False, use_paraboloid=False, do_presmooth=False)
 
   return img
 
@@ -145,8 +145,15 @@ def process_data(data_path, params):
 
   # Get TIFF stacks
   files = glob.glob(str(data_path) + "/*.tif")
-  files.sort(key=lambda x: str(len(x)) + x)
+  if len(files) <= 0:
+    # TODO: Make this...not crappy
+    files = glob.glob(str(data_path) + "/*.TIF")
 
+  if len(files) <= 0:
+    print("Could not find any TIFF files!")
+    exit(1)
+  files.sort(key=lambda x: str(len(x)) + x)
+  
   frame_i = 1
   for file in files:
     with tifffile.TiffFile(file) as tif:
