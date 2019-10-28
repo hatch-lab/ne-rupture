@@ -34,11 +34,17 @@ def get_cell_stats(p_data, skip_filtered=False):
 
   for event,name in STATS_EVENT_MAP.items():
     result['pred' + event] = True if event in p_data['event'].unique() else False
-    result['true' + event] = True if event in p_data['true_event'].unique() else False
+    if 'true_event' not in p_data.columns:
+      result['true' + event] = np.nan
+    else:
+      result['true' + event] = True if event in p_data['true_event'].unique() else False
 
     if 'cell_event' in p_data.columns:
       result['pred' + event] = True if event in p_data['cell_event'].unique() else False
-      result['true' + event] = True if event in p_data['true_cell_event'].unique() else False
+      if 'true_cell_event' not in p_data.columns:
+        result['true' + event] = np.nan
+      else:
+        result['true' + event] = True if event in p_data['true_cell_event'].unique() else False
 
   return result
 

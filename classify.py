@@ -4,7 +4,7 @@
 Classifies particle events using a given classifier
 
 Usage:
-  classify.py CLASSIFIER INPUT [--input-name=<string>] [--output-name=<string>] [--output-dir=<string>] [--input-dir=<string>] [--skip-graphs] [--img-dir=<string>] [--conf=<string>]
+  classify.py CLASSIFIER INPUT [--input-name=<string>] [--output-name=<string>] [--cell-summary-name=<string>] [--event-summary-name=<string>] [--output-dir=<string>] [--input-dir=<string>] [--skip-graphs] [--img-dir=<string>] [--conf=<string>]
 
 Arguments:
   CLASSIFIER The name of the classifier to test
@@ -15,6 +15,8 @@ Options:
   --version Show version.
   --input-name=<string>  [default: data.csv] The name of the input CSV file
   --output-name=<string>  [default: results.csv] The name of the resulting CSV file
+  --cell-summary-name=<string>  [default: cell-summary.csv] The name of the CSV file for data summarized by cells
+  --event-summary-name=<string>  [default: event-summary.csv] The name of the CSV file for data summarized by events
   --output-dir=<string>  [default: output] The name of the subdirectory in which to store output
   --input-dir=<string>  [default: input] The name of the subdirectory in which to find the inpute CSV file
   --skip-graphs  Whether to skip producing graphs or videos
@@ -53,6 +55,8 @@ schema = Schema({
   'INPUT': And(len, lambda n: os.path.exists(n), error='INPUT does not exist'),
   '--input-name': len,
   '--output-name': len,
+  '--event-summary-name': len,
+  '--cell-summary-name': len,
   '--output-dir': len,
   '--input-dir': len,
   Optional('--skip-graphs'): bool,
@@ -79,6 +83,8 @@ tiff_path = input_root / (arguments['--img-dir'])
 
 data_file_path = input_path / (arguments['--input-name'])
 output_name = arguments['--output-name']
+event_summary_name = arguments['--event-summary-name']
+cell_summary_name = arguments['--cell-summary-name']
 skip_graphs = True if arguments['--skip-graphs'] else False
 conf = json.loads(arguments['--conf']) if arguments['--conf'] else False
 
@@ -97,6 +103,18 @@ output_path.mkdir(exist_ok=True)
 output_file_path = (output_path / (output_name)).resolve()
 
 classified_data.to_csv(str(output_file_path), header=True, encoding='utf-8', index=None)
+
+event_file_path = (output_path / (event_summary_name)).resolve()
+cell_file_path = (output_path / (cell_summary_name)).resolve()
+
+# Generate event/cell summaries
+event_summary = classifier.get_event_summary(classified_data, conf)
+if isinstance(event_summary, pd.DataFrame):
+  event_summary.to_csv(str(event_file_path), header=True, encoding='utf-8', index=None)
+
+cell_summary = classifier.get_cell_summary(classified_data, conf)
+if isinstance(cell_summary, pd.DataFrame):
+  cell_summary.to_csv(str(cell_file_path), header=True, encoding='utf-8', index=None)
 
 if not skip_graphs:
   cmd = [

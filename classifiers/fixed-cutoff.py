@@ -308,3 +308,29 @@ def run(data, conf=False, fast=False):
     data = apply_parallel(data.groupby([ 'data_set', 'particle_id' ]), "Classifying particles", process_event_seeds, conf)
 
   return data
+
+def get_event_summary(data, conf=False):
+  """
+  Produce an event summary
+
+  Arguments:
+    data pd.DataFrame The classified data
+    conf bool|dict The conf to be used; False if the default conf file
+
+  Returns:
+    pd.DataFrame The event data.
+  """
+  return False # Not implemented yet
+
+def get_cell_summary(data, conf=False):
+  """
+  Produce a cell summary
+
+  Arguments:
+    data pd.DataFrame The classified data
+    conf bool|dict The conf to be used; False if the default conf file
+
+  Returns:
+    pd.DataFrame The cell data.
+  """
+  return data.groupby([ 'data_set', 'particle_id' ]).apply(get_cell_stats)

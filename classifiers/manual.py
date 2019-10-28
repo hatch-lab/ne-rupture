@@ -16,8 +16,10 @@ from multiprocessing import Pool, cpu_count
 from time import sleep
 from PIL import Image, ImageDraw, ImageFont
 import cv2
+from scipy import optimize
 
 import common.video as hatchvid
+from validate.lib import get_cell_stats
 
 NEED_TIFFS = True
 NAME = "manual"
@@ -47,6 +49,13 @@ def process_event_seeds(p_data, conf):
 
   # Find when events begin to recover
   p_data = find_event_recoveries(p_data, conf)
+
+  # Perform curve-fit for rupture/repair events
+  p_data['repair_k'] = np.nan
+  p_data = fit_re_curves(p_data)
+
+  # Determine event durations
+  p_data = p_data.groupby([ 'event_id', 'event' ]).apply(find_event_durations)
 
   return p_data
 
@@ -335,6 +344,95 @@ def find_event_recoveries(p_data, conf):
 
   return p_data.loc[:, col_names]
 
+def fit_re_curves(p_data):
+  """
+  Find import curves
+
+  Attempts to fit a one-phase association 
+  curve to every repair event, and find 
+  the k parameter.
+
+  Arguments:
+    p_data pd.DataFrame The particle data
+
+  Returns
+    pd.DataFrame The modified data frame
+  """
+  baseline_median = np.mean(p_data.loc[(p_data['event'] == 'N'), 'stationary_median'])
+
+  p_data = p_data.groupby([ 'event_id' ]).apply(fit_re_curve, baseline_median)
+  return p_data
+
+def fit_re_curve(pe_data, baseline_median):
+  """
+  Find import curve for a single repair event
+
+  Attempts to fit a one-phase association curve
+  to a single repair event.
+
+  Arguments:
+    pe_data pd.DataFrame The particle data
+    baseline_media float The baseline median value for non-events
+
+  Returns
+    pd.DataFrame The modified data frame
+  """
+  if pe_data['event'].iloc[0] != 'R' and pe_data['event'].iloc[0] != 'E':
+    return pe_data
+
+  if pe_data.loc[( pe_data['event'] == 'E' )].shape[0] <= 1:
+    return pe_data
+
+  pe_data.sort_values(by=['time'])
+
+  # Fit curve
+  x0 = np.min(pe_data.loc[( pe_data['event'] == 'E' ), 'time'])
+  y0 = pe_data.loc[( pe_data['time'] == x0 ), 'stationary_median'].iloc[0]
+  top = baseline_median
+
+  x = pe_data.loc[( pe_data['event'] == 'E' ), 'time'].tolist()
+  y = pe_data.loc[( pe_data['event'] == 'E'), 'stationary_median'].tolist()
+
+  try:
+    popt, pcov = optimize.curve_fit(lambda time, k: one_phase(time, x0, y0, top, k), x, y, p0=[ 1E-5 ])
+  except optimize.OptimizeWarning:
+    return pe_data
+  except RuntimeError:
+    return pe_data
+
+  pe_data.loc[:, 'repair_k'] = popt[0]
+
+  return pe_data
+
+def one_phase(x, x0, y0, top, k):
+  """
+  A one-phase association curve
+
+  Arguments:
+    x np.array The x-values
+    x0 float The min x-value
+    y0 float The min y-value
+    top float The max y-value
+    k float The rate constant
+
+  Returns
+    np.array The y-values for each x-value
+  """
+  return y0+(top-y0)*(1-np.exp(-k*(x-x0)))
+
+def find_event_durations(pe_data):
+  """
+  Find event durations
+
+  Arguments:
+    pe_data pd.DataFrame The particle data
+
+  Returns
+    pe_data pd.DataFrame The modified data frame
+  """
+  pe_data.loc[:, 'event_duration'] = np.max(pe_data['time']) - np.min(pe_data['time'])
+  return pe_data
+
 def sliding_average(data, window, step, frame_rate):
   """
   Generate a sliding window average
@@ -414,6 +512,18 @@ def apply_parallel(grouped, message,  fn, *args):
   return pd.concat(rs.get(), sort=False)
 
 def run(data, tiff_path, conf=False, fast=False):
+  """
+  Run the classifier
+
+  Arguments:
+    data pd.DataFrame The input data
+    tiff_path string Not used in this classifier
+    conf bool|dict The conf to be used; False if the default conf file
+    fast bool If True, we will not do any processing other than seeding the events
+
+  Returns:
+    pd.DataFrame The classified data.
+  """
   if not conf:
     with CONF_PATH.open(mode='r') as file:
       conf = json.load(file)
@@ -427,5 +537,35 @@ def run(data, tiff_path, conf=False, fast=False):
 
   if not fast:
     data = apply_parallel(data.groupby([ 'data_set', 'particle_id' ]), "Classifying particles", process_event_seeds, conf)
+  
+  # data = pd.read_csv("../LD-rotation-shB1/output/results.csv", header=0, dtype={ 'particle_id': str })
+  # data = apply_parallel(data.groupby([ 'data_set', 'particle_id' ]), "Classifying particles", process_event_seeds, conf)
 
   return data
+
+def get_event_summary(data, conf=False):
+  """
+  Produce an event summary
+
+  Arguments:
+    data pd.DataFrame The classified data
+    conf bool|dict The conf to be used; False if the default conf file
+
+  Returns:
+    pd.DataFrame The event data.
+  """
+  return False # Not implemented yet
+  return data.groupby([ 'data_set', 'event' ])['repair_k', 'event_duration'].describe()
+
+def get_cell_summary(data, conf=False):
+  """
+  Produce a cell summary
+
+  Arguments:
+    data pd.DataFrame The classified data
+    conf bool|dict The conf to be used; False if the default conf file
+
+  Returns:
+    pd.DataFrame The cell data.
+  """
+  return data.groupby([ 'data_set', 'particle_id' ]).apply(get_cell_stats)
