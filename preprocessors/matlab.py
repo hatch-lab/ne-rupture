@@ -197,7 +197,10 @@ def process_data(data_path, params):
   #   print(colorize("red", "Unable to process TIFFs"))
   #   exit(1)
 
-  frame_paths = [ str(x) for x in tiff_path.glob("*.tif") ]
+  frame_paths = list(tiff_path.glob("*.tif"))
+  # Filter out ._ files OS X likes to make
+  frame_paths = list(filter(lambda x: x.name[:2] != "._", frame_paths))
+  frame_paths = [ str(x) for x in frame_paths ]
   frame_paths.sort()
 
   TEMP_PATH.mkdir(mode=0o755, parents=True, exist_ok=True)
