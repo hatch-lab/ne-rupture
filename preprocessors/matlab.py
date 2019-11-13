@@ -96,23 +96,23 @@ def process_image(img, channel, filter_window, gamma, pixel_size, rolling_ball_s
     img = img_as_ubyte(img)
 
   # Perform median filtering
-  img = filters.median(img, selem=np.ones((filter_window, filter_window)), behavior='rank')
+  filtered_img = filters.median(img, selem=np.ones((filter_window, filter_window)), behavior='rank')
 
   # Perform gamma correction
-  img = exposure.adjust_gamma(img, gamma)
+  filtered_img = exposure.adjust_gamma(filtered_img, gamma)
 
   # Rolling ball background subtraction
   # cv2_rolling_ball.subtract_background_rolling_ball is ridonculously slow
   # Gonna fake it
-  bg = filters.median(img, selem=morphology.disk(rolling_ball_size*pixel_size))
-  img = img.astype(np.int16)
-  img = img-bg
-  img[img < 0] = 0
-  img = img.astype(np.uint8)
-  img = exposure.rescale_intensity(img)
+  bg = filters.median(filtered_img, selem=morphology.disk(rolling_ball_size*pixel_size))
+  filtered_img = filtered_img.astype(np.int16)
+  filtered_img = filtered_img-bg
+  filtered_img[filtered_img < 0] = 0
+  filtered_img = filtered_img.astype(np.uint8)
+  filtered_img = exposure.rescale_intensity(filtered_img)
   # img = subtract_background_rolling_ball(img, rolling_ball_size*pixel_size, light_background=False, use_paraboloid=False, do_presmooth=False)
 
-  return img
+  return ( img, filtered_img )
 
 
 def process_data(data_path, params):
@@ -142,6 +142,9 @@ def process_data(data_path, params):
   keep_imgs = params['keep_imgs']
 
   tiff_path.mkdir(mode=0o755, parents=True, exist_ok=True)
+  
+  raw_path = tiff_path / "8-bit"
+  raw_path.mkdir(mode=0o755, parents=True, exist_ok=True)
 
   # Get TIFF stacks
   files = glob.glob(str(data_path) + "/*.tif")
@@ -173,10 +176,11 @@ def process_data(data_path, params):
 
       for i in range(len(tif.pages)):
         print("  Processing frame " + str(frame_i) + "...")
-        img = process_image(tif.pages[i].asarray(), channel, filter_window, gamma, pixel_size, rolling_ball_size)
+        raw, img = process_image(tif.pages[i].asarray(), channel, filter_window, gamma, pixel_size, rolling_ball_size)
 
         file_name = str(frame_i).zfill(4) + ".tif"
         tifffile.TiffWriter(str(tiff_path / file_name)).save(img, resolution=(pixel_size, pixel_size, None))
+        tifffile.TiffWriter(str(raw_path / file_name)).save(img, resolution=(pixel_size, pixel_size, None))
         frame_i += 1
 
   # cmd = [

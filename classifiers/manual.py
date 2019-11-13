@@ -95,7 +95,7 @@ def seed_events(data, tiff_path, conf):
     frame = data['frame'].iloc[idx]
 
     frame_file_name = str(frame).zfill(4) + '.tif'
-    frame_path = (tiff_path / (data_set + "/" + frame_file_name)).resolve()
+    frame_path = (tiff_path / (data_set + "/8-bit/" + frame_file_name)).resolve()
 
     raw_frame = cv2.imread(str(frame_path), cv2.IMREAD_GRAYSCALE)
 
@@ -517,7 +517,7 @@ def run(data, tiff_path, conf=False, fast=False):
 
   Arguments:
     data pd.DataFrame The input data
-    tiff_path string Not used in this classifier
+    tiff_path string The path to TIFF images
     conf bool|dict The conf to be used; False if the default conf file
     fast bool If True, we will not do any processing other than seeding the events
 
