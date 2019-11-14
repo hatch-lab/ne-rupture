@@ -95,8 +95,10 @@ def process_image(img, channel, filter_window, gamma, pixel_size, rolling_ball_s
     warnings.simplefilter("ignore")
     img = img_as_ubyte(img)
 
+  filtered_img = np.copy(img)
+
   # Perform median filtering
-  filtered_img = filters.median(img, selem=np.ones((filter_window, filter_window)), behavior='rank')
+  filtered_img = filters.median(filtered_img, selem=np.ones((filter_window, filter_window)), behavior='rank')
 
   # Perform gamma correction
   filtered_img = exposure.adjust_gamma(filtered_img, gamma)
@@ -180,7 +182,7 @@ def process_data(data_path, params):
 
         file_name = str(frame_i).zfill(4) + ".tif"
         tifffile.TiffWriter(str(tiff_path / file_name)).save(img, resolution=(pixel_size, pixel_size, None))
-        tifffile.TiffWriter(str(raw_path / file_name)).save(img, resolution=(pixel_size, pixel_size, None))
+        tifffile.TiffWriter(str(raw_path / file_name)).save(raw, resolution=(pixel_size, pixel_size, None))
         frame_i += 1
 
   # cmd = [

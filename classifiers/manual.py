@@ -17,11 +17,13 @@ from time import sleep
 from PIL import Image, ImageDraw, ImageFont
 import cv2
 from scipy import optimize
+import contextlib
 
 import common.video as hatchvid
 from validate.lib import get_cell_stats
 
 NEED_TIFFS = True
+SAVES_INTERMEDIATES = True
 NAME = "manual"
 CONF_PATH = (ROOT_PATH / ("classifiers/manual/conf.json")).resolve()
 FONT_PATH = (ROOT_PATH / ("common/font.ttf")).resolve()
@@ -59,8 +61,14 @@ def process_event_seeds(p_data, conf):
 
   return p_data
 
+@contextlib.contextmanager
+def atomic_write(file_path):
+  temp_file_name = str(file_path) + "~"
+  with open(temp_file_name, "w") as f:
+    yield f
+  os.rename(temp_file_name, str(file_path))
 
-def seed_events(data, tiff_path, conf):
+def seed_events(data, tiff_path, tmp_csv_path, conf, idx=0):
   """
   Seeds rupture events for full classification
 
@@ -70,9 +78,8 @@ def seed_events(data, tiff_path, conf):
     conf dict Cutoffs for various parameters used for finding rupture events
 
   Returns:
-    pd.DataFrame The modified particle data
+    (bool, pd.DataFrame) Whether seeding completed, The modified particle data
   """
-
   title_font = ImageFont.truetype(str(FONT_PATH), size=15)
   small_font = ImageFont.truetype(str(FONT_PATH), size=10)
   p_event_labels = {
@@ -82,10 +89,6 @@ def seed_events(data, tiff_path, conf):
     'X': 'Apoptosis'
   }
 
-  data.sort_values([ 'data_set', 'particle_id', 'frame' ], inplace=True)
-  data.reset_index(inplace=True, drop=True)
-
-  idx = 0
   while(idx < len(data.index)):
     if idx < 0:
       idx = 0
@@ -198,11 +201,12 @@ def seed_events(data, tiff_path, conf):
       data.at[idx, 'event'] = c.upper()
 
     elif c == 'q':
-      exit()
+      data.loc[:, 'current_idx'] = idx
+      cv2.destroyAllWindows()
+      return (False, data)
 
   cv2.destroyAllWindows()
-
-  return data
+  return (True, data)
 
 def extend_events(p_data, conf):
   """
@@ -528,20 +532,28 @@ def run(data, tiff_path, conf=False, fast=False):
     with CONF_PATH.open(mode='r') as file:
       conf = json.load(file)
 
-  orig_data = data.copy()
+  tmp_path = ROOT_PATH / conf['tmp_dir']
+  tmp_path.mkdir(mode=0o755, parents=True, exist_ok=True)
+
+  tmp_csv_path = tmp_path / "data.csv"
+  
+  data.sort_values([ 'data_set', 'particle_id', 'frame' ], inplace=True)
+  data.reset_index(inplace=True, drop=True)
+  idx = data['current_idx'].iloc[0]
 
   # Classify
-  data.loc[:,'event'] = 'N'
-  data.loc[:,'event_id'] = -1
-  data = seed_events(data, tiff_path, conf=conf)
+  if 'event' not in data.columns:
+    data.loc[:,'event'] = 'N'
+    data.loc[:,'event_id'] = -1
+  done, data = seed_events(data, tiff_path, tmp_csv_path, conf=conf, idx=idx)
 
-  if not fast:
+  if not fast and done:
     data = apply_parallel(data.groupby([ 'data_set', 'particle_id' ]), "Classifying particles", process_event_seeds, conf)
   
   # data = pd.read_csv("../LD-rotation-shB1/output/results.csv", header=0, dtype={ 'particle_id': str })
   # data = apply_parallel(data.groupby([ 'data_set', 'particle_id' ]), "Classifying particles", process_event_seeds, conf)
 
-  return data
+  return (done, data)
 
 def get_event_summary(data, conf=False):
   """

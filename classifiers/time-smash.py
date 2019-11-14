@@ -18,6 +18,7 @@ from multiprocessing import Pool, cpu_count
 from time import sleep
 
 NEED_TIFFS = False
+SAVES_INTERMEDIATES = False
 NAME = "time-smash"
 CONF_PATH = (ROOT_PATH / ("classifiers/time-smash/conf.json")).resolve()
 
@@ -38,7 +39,7 @@ def classify_cells(data, conf):
 
   return data
 
-def run(data, conf=False, fast=False):
+def run(data, tiff_path, conf=False, fast=False):
   if not conf:
     with CONF_PATH.open(mode='r') as file:
       conf = json.load(file)

@@ -16,6 +16,7 @@ from multiprocessing import Pool, cpu_count
 from time import sleep
 
 NEED_TIFFS = False
+SAVES_INTERMEDIATES = False
 NAME = "fixed-cutoff"
 CONF_PATH = (ROOT_PATH / ("classifiers/fixed-cutoff/conf.json")).resolve()
 
@@ -286,7 +287,7 @@ def apply_parallel(grouped, message,  fn, *args):
 
 #   return n_data
 
-def run(data, conf=False, fast=False):
+def run(data, tiff_path, conf=False, fast=False):
   if not conf:
     with CONF_PATH.open(mode='r') as file:
       conf = json.load(file)
