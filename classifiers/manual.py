@@ -404,7 +404,8 @@ def fit_re_curve(pe_data, baseline_median):
   except RuntimeError:
     return pe_data
 
-  pe_data.loc[:, 'repair_k'] = popt[0]
+  if not np.isnan(popt[0]) and not math.isinf(popt[0]):
+    pe_data.loc[:, 'repair_k'] = popt[0]
 
   return pe_data
 
