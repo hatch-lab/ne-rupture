@@ -18,6 +18,7 @@ from PIL import Image, ImageDraw, ImageFont
 import cv2
 from scipy import optimize
 import contextlib
+from skimage import exposure
 
 import common.video as hatchvid
 from validate.lib import get_cell_stats
@@ -81,7 +82,7 @@ def seed_events(data, tiff_path, tmp_csv_path, conf, idx=0):
     (bool, pd.DataFrame) Whether seeding completed, The modified particle data
   """
   title_font = ImageFont.truetype(str(FONT_PATH), size=15)
-  small_font = ImageFont.truetype(str(FONT_PATH), size=10)
+  small_font = ImageFont.truetype(str(FONT_PATH), size=12)
   p_event_labels = {
     'N': '',
     'R': 'Rupture',
@@ -89,9 +90,17 @@ def seed_events(data, tiff_path, tmp_csv_path, conf, idx=0):
     'X': 'Apoptosis'
   }
 
+  intensity_range = [ 0, 255 ]
   while(idx < len(data.index)):
+
+    # Bounds checking
     if idx < 0:
       idx = 0
+
+    if intensity_range[0] <= 0:
+      intensity_range[0] = 0
+    if intensity_range[1] >= 255:
+      intensity_range[1] = 255
 
     data_set = data['data_set'].iloc[idx]
     current_event = data['event'].iloc[idx]
@@ -108,6 +117,9 @@ def seed_events(data, tiff_path, tmp_csv_path, conf, idx=0):
     # Crop down to just this particle
     crop_frame = hatchvid.crop_frame(raw_frame, x, y, conf['movie_width'], conf['movie_height'])
     crop_frame = cv2.resize(crop_frame, None, fx=conf['movie_scale_factor'], fy=conf['movie_scale_factor'], interpolation=cv2.INTER_CUBIC)
+
+    # Adjust contrast
+    crop_frame = exposure.rescale_intensity(crop_frame, in_range=tuple(intensity_range))
 
     # Add a space for text
     crop_frame = np.concatenate((np.zeros(( 40, crop_frame.shape[1]), dtype=crop_frame.dtype), crop_frame), axis=0)
@@ -130,11 +142,11 @@ def seed_events(data, tiff_path, tmp_csv_path, conf, idx=0):
     img = Image.fromarray(crop_frame)
     draw = ImageDraw.Draw(img)
 
-    controls = "[<] Prev [>] Next [S] Skip \n[R] Rupture [M] Mitosis [X] Apoptosis [N] None"
+    controls = "[<] Prev [>] Next [S] Skip \n[-] Less contrast [+] More contrast\n[R] Rupture [M] Mitosis [X] Apoptosis [N] None"
 
     draw.text((10, 10), title, fill='rgb(255,255,255)', font=title_font)
     draw.text((10, 30), label, fill='rgb(255,255,255)', font=small_font)
-    draw.text((10, crop_frame.shape[0]-40), controls, fill='rgb(255,255,255)', font=small_font)
+    draw.text((10, crop_frame.shape[0]-50), controls, fill='rgb(255,255,255)', font=small_font)
 
     # Get it back into OpenCV format
     crop_frame = np.array(img)
@@ -142,7 +154,13 @@ def seed_events(data, tiff_path, tmp_csv_path, conf, idx=0):
     cv2.imshow('Cell', crop_frame)
 
     c = chr(cv2.waitKey(0) & 255)
-    if c == ',':
+    if c == '-':
+      intensity_range[1] += 5
+
+    elif c == '=':
+      intensity_range[1] -=5
+
+    elif c == ',':
       idx -= 1
 
     elif c == '.':
