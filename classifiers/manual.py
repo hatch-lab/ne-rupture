@@ -549,12 +549,12 @@ def run(data, tiff_path, conf=False, fast=False):
   done, data = seed_events(data, tiff_path, tmp_csv_path, conf=conf, idx=idx)
 
   if not fast and done:
-    data = apply_parallel(data.groupby([ 'data_set', 'particle_id' ]), "Classifying particles", process_event_seeds, conf)
-  
-  # data = pd.read_csv("../LD-rotation-shB1/output/results.csv", header=0, dtype={ 'particle_id': str })
-  # data = apply_parallel(data.groupby([ 'data_set', 'particle_id' ]), "Classifying particles", process_event_seeds, conf)
+    try:
+      data = apply_parallel(data.groupby([ 'data_set', 'particle_id' ]), "Classifying particles", process_event_seeds, conf)
+    except:
+      return ( False, data )
 
-  return (done, data)
+  return ( done, data )
 
 def get_event_summary(data, conf=False):
   """
