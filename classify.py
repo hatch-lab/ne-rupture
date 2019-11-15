@@ -116,7 +116,9 @@ if classifier.SAVES_INTERMEDIATES and not done:
 
 data.to_csv(str(output_file_path), header=True, encoding='utf-8', index=None)
 
-if done:
+if not done:
+  print(colorize("red", "The classifier did not finish or an error was encountered."))
+else:
   event_file_path = (output_path / (event_summary_name)).resolve()
   cell_file_path = (output_path / (cell_summary_name)).resolve()
 
