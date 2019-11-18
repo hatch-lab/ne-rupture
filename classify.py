@@ -4,7 +4,7 @@
 Classifies particle events using a given classifier
 
 Usage:
-  classify.py CLASSIFIER INPUT [--input-name=<string>] [--output-name=<string>] [--cell-summary-name=<string>] [--event-summary-name=<string>] [--output-dir=<string>] [--input-dir=<string>] [--skip-graphs] [--img-dir=<string>] [--conf=<string>] [--from-last]
+  classify.py CLASSIFIER INPUT [--input-name=<string>] [--output-name=<string>] [--cell-summary-name=<string>] [--event-summary-name=<string>] [--output-dir=<string>] [--input-dir=<string>] [--skip-graphs] [--img-dir=<string>] [--conf=<string>] [--start-over]
 
 Arguments:
   CLASSIFIER The name of the classifier to test
@@ -22,7 +22,7 @@ Options:
   --skip-graphs  Whether to skip producing graphs or videos
   --img-dir=<string>  [default: images] The subdirectory that contains TIFF images of each frame, for outputting videos.
   --conf=<string>  Override configuration options in conf.json with a JSON string.
-  --from-last  Whether to pick up from where we last left off, if that classifier supports it
+  --start-over  Whether to pick up from where we last left off or start over, if that classifier supports it
 
 Output:
   Generates graphs of each nucleus's predicted and actual events.
@@ -62,7 +62,7 @@ schema = Schema({
   Optional('--skip-graphs'): bool,
   '--img-dir': len,
   '--conf': Or(None, len),
-  Optional('--from-last'): bool
+  Optional('--start-over'): bool
 })
 
 try:
@@ -89,7 +89,7 @@ cell_summary_name = arguments['--cell-summary-name']
 skip_graphs = True if arguments['--skip-graphs'] else False
 conf = json.loads(arguments['--conf']) if arguments['--conf'] else False
 
-from_last = True if arguments['--from-last'] else False
+start_over = True if arguments['--start-over'] else False
 
 ### Get our classifier
 classifier = import_module("classifiers." + classifier_name)
@@ -98,7 +98,7 @@ tmp_path = ROOT_PATH / ("tmp/classifiers/" + classifier_name)
 tmp_path.mkdir(mode=0o755, parents=True, exist_ok=True)
 intermediate_path = tmp_path / (arguments['--input-name'])
 
-if classifier.SAVES_INTERMEDIATES and from_last:
+if classifier.SAVES_INTERMEDIATES and not start_over:
   data_file_path = intermediate_path if intermediate_path.exists() else data_file_path
 
 ### Read our data
@@ -116,8 +116,13 @@ if classifier.SAVES_INTERMEDIATES and not done:
 
 data.to_csv(str(output_file_path), header=True, encoding='utf-8', index=None)
 
+if done and intermediate_path.exists():
+  # Clear the intermediate file
+  intermediate_path.unlink()
+
+
 if not done:
-  print(colorize("red", "The classifier did not finish or an error was encountered."))
+  print(colorize("red", "The classifier did not finish or there was an error."))
 else:
   event_file_path = (output_path / (event_summary_name)).resolve()
   cell_file_path = (output_path / (cell_summary_name)).resolve()

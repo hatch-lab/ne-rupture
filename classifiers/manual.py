@@ -102,6 +102,8 @@ def seed_events(data, tiff_path, tmp_csv_path, conf, idx=0):
     if intensity_range[1] >= 255:
       intensity_range[1] = 255
 
+    data.loc[:, 'current_idx'] = idx
+
     data_set = data['data_set'].iloc[idx]
     current_event = data['event'].iloc[idx]
     frame = data['frame'].iloc[idx]
@@ -153,7 +155,7 @@ def seed_events(data, tiff_path, tmp_csv_path, conf, idx=0):
 
     cv2.imshow('Cell', crop_frame)
 
-    c = chr(cv2.waitKey(0) & 255)
+    c = chr(cv2.waitKey(100) & 255)
     if c == '-':
       intensity_range[1] += 5
 
@@ -218,8 +220,7 @@ def seed_events(data, tiff_path, tmp_csv_path, conf, idx=0):
     elif c in [ 'r', 'm', 'x', 'n' ]:
       data.at[idx, 'event'] = c.upper()
 
-    elif c == 'q':
-      data.loc[:, 'current_idx'] = idx
+    elif c == 'q' or cv2.getWindowProperty('Cell', cv2.WND_PROP_VISIBLE) < 1:
       cv2.destroyAllWindows()
       return (False, data)
 
@@ -246,12 +247,16 @@ def extend_events(p_data, conf):
   convergence_limit = conf['convergence_limit']
 
   for event_id in event_ids:
-    event_type = p_data[(p_data['event_id'] == event_id)]['event'].values[0]
+    event_type = p_data.loc[(p_data['event_id'] == event_id), 'event'].unique()
+    if len(event_type) <= 0:
+      continue
+    else:
+      event_type = event_type[0]
 
     if event_type == 'X':
       frame = np.max(p_data.loc[(p_data['event_id'] == event_id), 'frame'])
-      p_data.loc[(p_data['frame' >= frame]), 'event'] = event_type
-      p_data.loc[(p_data['frame' >= frame]), 'event_id'] = event_id
+      p_data.loc[(p_data['frame'] >= frame), 'event'] = event_type
+      p_data.loc[(p_data['frame'] >= frame), 'event_id'] = event_id
       continue
 
     no_event_idx = (p_data['event'] == 'N')
@@ -569,7 +574,7 @@ def run(data, tiff_path, conf=False, fast=False):
   if not fast and done:
     try:
       data = apply_parallel(data.groupby([ 'data_set', 'particle_id' ]), "Classifying particles", process_event_seeds, conf)
-    except:
+    except Exception as e:
       return ( False, data )
 
   return ( done, data )
