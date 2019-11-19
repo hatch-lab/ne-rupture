@@ -85,8 +85,8 @@ cmd = [
   str(movie_graphs_path),
   str(conf_path)
 ]
-subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-# subprocess.call(cmd)
+# subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+subprocess.call(cmd)
 
 if (ROOT_PATH / ("Rplots.pdf")).exists():
   (ROOT_PATH / ("Rplots.pdf")).unlink() # R keeps spitting this out. Not sure why yet.
