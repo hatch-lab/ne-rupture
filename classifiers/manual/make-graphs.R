@@ -15,6 +15,14 @@ movie_plot_width <- as.integer(args[3])
 movie_plot_output <- args[4]
 conf_path <- args[5]
 
+EVENT_NAMES <- list(
+  "N"="(No event)",
+  "R"="Rupture",
+  "E"="Repair",
+  "X"="Apoptosis",
+  "M"="Mitosis"
+)
+
 # Figure out column class mapping
 MAP <- list(
   "data_set" = "character",
@@ -40,7 +48,7 @@ if(!("true_event" %in% names(data))) {
   have_true_events <- F
 }
 
-package_list <- c("ggplot2", "cowplot", "jsonlite", "rlist", "plyr")
+package_list <- c("ggplot2", "cowplot", "jsonlite", "rlist", "plyr", "grDevices")
 new_packages <- package_list[!(package_list %in% installed.packages()[,"Package"])]
 if(length(new_packages)) {
   install.packages(new_packages, repos = "https://cran.cnr.berkeley.edu/")
@@ -138,9 +146,47 @@ format_frame_labels <- function() {
   })
 }
 
-# Generate a list of plots for each particle
-interesting_plots <- list()
+interesting_cells <- list()
 plots <- list()
+
+event_durations <- ddply(data[which(data$event_id != -1),], .(data_set, particle_id, event_id, event), function(x, event_names) {
+  event_name <- event_names[[x$event[[1]]]]
+  return(data.frame(
+    data_set=x$data_set[[1]],
+    particle_id=x$particle_id[[1]],
+    event_id=x$event_id[[1]],
+    event=event_name,
+    duration=x$event_duration[[1]]
+  ))
+}, EVENT_NAMES)
+
+event_duration_plot <- ggplot(event_durations, aes(x=event, y=duration)) +
+  geom_jitter(alpha=0.2, width=0.1, height=0.3) +
+  geom_violin() +
+  scale_x_discrete(name="") +
+  scale_y_continuous(name="Duration", labels=format_time_labels()) +
+  facet_grid(.~data_set)
+
+re_values <- ddply(data[which(data$event == "E"),], .(data_set, particle_id, event_id), function(x) {
+  return(data.frame(
+    data_set=x$data_set[[1]],
+    particle_id=x$particle_id[[1]],
+    event_id=x$event_id[[1]],
+    k=x$repair_k[[1]]
+  ))
+})
+
+re_plot <- ggplot(re_values, aes(x=1, y=k)) +
+  geom_jitter(alpha=0.2, width=0.1, height=0.3) +
+  geom_violin() +
+  scale_x_discrete(name="") +
+  scale_y_continuous(name="k") +
+  facet_grid(.~data_set)
+
+plots[[(length(plots)+1)]] <- event_duration_plot
+plots[[(length(plots)+1)]] <- re_plot
+
+# Generate a list of plots for each particle
 data_sets <- unique(data$data_set)
 for(m in 1:length(data_sets)) {
   data_set <- data_sets[[m]]
@@ -284,7 +330,7 @@ for(m in 1:length(data_sets)) {
     ggsave(paste0(movie_plot_output, "/", data_set, "_", pid, ".tiff"), movie_plot, width=movie_plot_width/300, height=50/300, units="in") 
     
     if(is_interesting) {
-      interesting_plots[[length(interesting_plots)+1]] <- base_plot +
+      interesting_cells[[length(interesting_cells)+1]] <- base_plot +
         geom_line(aes(x=time, y=stationary_median)) +
         ggtitle(paste0(strtrim(data_set, 5), ":", pid)) +
         scale_y_continuous(name="", limits=c(-1,1), labels=c()) +
@@ -297,8 +343,8 @@ for(m in 1:length(data_sets)) {
   } 
 }
 
-if(length(interesting_plots) > 0) {
-  plots <- list.prepend(plots, list(plot_grid(plotlist=interesting_plots, align="hv")))
+if(length(interesting_cells) > 0) {
+  plots <- list.prepend(plots, list(plot_grid(plotlist=interesting_cells, align="hv")))
 }
 
 # Print out

@@ -594,7 +594,7 @@ def get_event_summary(data, conf=False):
     pd.DataFrame The event data.
   """
   return False # Not implemented yet
-  return data.groupby([ 'data_set', 'event' ])['repair_k', 'event_duration'].describe()
+  # return data.groupby([ 'data_set', 'event' ])['repair_k', 'event_duration'].describe()
 
 def get_cell_summary(data, conf=False):
   """
