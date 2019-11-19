@@ -417,8 +417,11 @@ def fit_re_curve(pe_data, baseline_median):
   y0 = pe_data.loc[( pe_data['time'] == x0 ), 'stationary_median'].iloc[0]
   top = baseline_median
 
-  x = pe_data.loc[( pe_data['event'] == 'E' ), 'time'].tolist()
-  y = pe_data.loc[( pe_data['event'] == 'E'), 'stationary_median'].tolist()
+  x = np.array(pe_data.loc[( pe_data['event'] == 'E' ), 'time'].tolist())
+  y = np.array(pe_data.loc[( pe_data['event'] == 'E'), 'stationary_median'].tolist())
+
+  x = x[~np.isnan(y)]
+  y = y[~np.isnan(y)]
 
   try:
     popt, pcov = optimize.curve_fit(lambda time, k: one_phase(time, x0, y0, top, k), x, y, p0=[ 1E-5 ])
@@ -427,8 +430,7 @@ def fit_re_curve(pe_data, baseline_median):
   except RuntimeError:
     return pe_data
 
-  if not np.isnan(popt[0]) and not math.isinf(popt[0]):
-    pe_data.loc[:, 'repair_k'] = popt[0]
+  pe_data.loc[:, 'repair_k'] = popt[0]
 
   return pe_data
 
@@ -569,6 +571,7 @@ def run(data, tiff_path, conf=False, fast=False):
   if 'event' not in data.columns:
     data.loc[:,'event'] = 'N'
     data.loc[:,'event_id'] = -1
+
   done, data = seed_events(data, tiff_path, tmp_csv_path, conf=conf, idx=idx)
 
   if not fast and done:
