@@ -15,14 +15,6 @@ movie_plot_width <- as.integer(args[3])
 movie_plot_output <- args[4]
 conf_path <- args[5]
 
-EVENT_NAMES <- list(
-  "N"="(No event)",
-  "R"="Rupture",
-  "E"="Repair",
-  "X"="Apoptosis",
-  "M"="Mitosis"
-)
-
 # Figure out column class mapping
 MAP <- list(
   "data_set" = "character",
@@ -146,45 +138,111 @@ format_frame_labels <- function() {
   })
 }
 
-interesting_cells <- list()
-plots <- list()
+# Generate event summary graphs
+EVENT_MAP <- list(
+  "data_set" = "character",
+  "particle_id" = "character"
+)
+EVENT_MAP_NAMES = names(EVENT_MAP)
 
-event_durations <- ddply(data[which(data$event_id != -1),], .(data_set, particle_id, event_id, event), function(x, event_names) {
-  event_name <- event_names[[x$event[[1]]]]
-  return(data.frame(
-    data_set=x$data_set[[1]],
-    particle_id=x$particle_id[[1]],
-    event_id=x$event_id[[1]],
-    event=event_name,
-    duration=x$event_duration[[1]]
-  ))
+event_summary_file <- paste(dirname(csv_file), "event-summary.csv", sep="/")
+event_data <- read.csv(event_summary_file, stringsAsFactors=F, nrows=2)
+cols <- names(event_data)
+col_classes <- c()
+for(col in cols) {
+  if(col %in% EVENT_MAP_NAMES) {
+    col_classes <- c(col_classes, EVENT_MAP[[col]])
+  } else {
+    col_classes <- c(col_classes, NA)
+  }
+}
+
+event_data <- read.csv(event_summary_file, stringsAsFactors=F, colClasses=col_classes)
+
+EVENT_NAMES <- list(
+  "N"="(No event)",
+  "R"="Rupture",
+  "E"="Repair",
+  "R+E"="Rupture+Repair",
+  "X"="Apoptosis",
+  "M"="Mitosis"
+)
+
+event_data$event_label <- event_data$event
+event_data <- ddply(event_data, .(event), function(x, event_names) {
+  event <- x$event[[1]]
+  if(event %in% names(event_names)) {
+    x$event_label <- event_names[[event]]
+  }
+  return(x)
 }, EVENT_NAMES)
 
-event_duration_plot <- ggplot(event_durations, aes(x=event, y=duration)) +
-  geom_jitter(alpha=0.2, width=0.1, height=0.3) +
+duration_plot <- ggplot(event_data, aes(x=event_label, y=duration)) +
+  geom_jitter(width=0.2, height=0.2, alpha=0.1) +
   geom_violin() +
-  scale_x_discrete(name="") +
+  stat_summary(
+    fun.y=median,
+    geom="errorbar",
+    aes(ymax=..y.., ymin=..y..),
+    color="red",
+    width=0.25,
+    size=0.8
+  ) +
   scale_y_continuous(name="Duration", labels=format_time_labels()) +
-  facet_grid(.~data_set)
-
-re_values <- ddply(data[which(data$event == "E"),], .(data_set, particle_id, event_id), function(x) {
-  return(data.frame(
-    data_set=x$data_set[[1]],
-    particle_id=x$particle_id[[1]],
-    event_id=x$event_id[[1]],
-    k=x$repair_k[[1]]
-  ))
-})
-
-re_plot <- ggplot(re_values, aes(x=1, y=k)) +
-  geom_jitter(alpha=0.2, width=0.1, height=0.3) +
-  geom_violin() +
   scale_x_discrete(name="") +
-  scale_y_continuous(name="k") +
   facet_grid(.~data_set)
 
-plots[[(length(plots)+1)]] <- event_duration_plot
-plots[[(length(plots)+1)]] <- re_plot
+normalized_duration_plot <- ggplot(event_data, aes(x=event_label, y=normalized_duration)) +
+  geom_jitter(width=0.2, height=0.2, alpha=0.1) +
+  geom_violin() +
+  stat_summary(
+    fun.y=median,
+    geom="errorbar",
+    aes(ymax=..y.., ymin=..y..),
+    color="red",
+    width=0.25,
+    size=0.8
+  ) +
+  scale_y_continuous(name="Normalized duration (AU)") +
+  scale_x_discrete(name="") +
+  facet_grid(.~data_set)
+
+fp_lost_plot <- ggplot(event_data[which(!(event_data$event %in% c("R", "E"))),], aes(x=event_label, y=fraction_fp_lost)) +
+  geom_jitter(width=0.2, height=0.2, alpha=0.1) +
+  geom_violin() +
+  stat_summary(
+    fun.y=median,
+    geom="errorbar",
+    aes(ymax=..y.., ymin=..y..),
+    color="red",
+    width=0.25,
+    size=0.8
+  ) +
+  scale_y_continuous(name="FP lost (% of baseline)") +
+  scale_x_discrete(name="") +
+  facet_grid(.~data_set)
+
+hole_size_plot <- ggplot(event_data[which(!(event_data$event %in% c("R", "E"))),], aes(x=event_label, y=rupture_size)) +
+  geom_jitter(width=0.2, height=0.2, alpha=0.1) +
+  geom_violin() +
+  stat_summary(
+    fun.y=median,
+    geom="errorbar",
+    aes(ymax=..y.., ymin=..y..),
+    color="red",
+    width=0.25,
+    size=0.8
+  ) +
+  scale_y_continuous(name="Rupture size (nm)") +
+  scale_x_discrete(name="") +
+  facet_grid(.~data_set)
+
+cairo_pdf(paste0(output, "event-summary.pdf"), width=10.75, height=8.25, onefile=T)
+plot_grid(duration_plot, normalized_duration_plot, fp_lost_plot, hole_size_plot,align="h")
+dev.off()
+
+interesting_cells <- list()
+plots <- list()
 
 # Generate a list of plots for each particle
 data_sets <- unique(data$data_set)

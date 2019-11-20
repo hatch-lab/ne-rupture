@@ -593,8 +593,92 @@ def get_event_summary(data, conf=False):
   Returns:
     pd.DataFrame The event data.
   """
-  return False # Not implemented yet
-  # return data.groupby([ 'data_set', 'event' ])['repair_k', 'event_duration'].describe()
+
+  cp = data.copy()
+
+  # Calculate and store baseline median / particle
+  cp = cp.groupby([ 'data_set', 'particle_id' ]).apply(get_baseline_median)
+
+  # Filter out non-events
+  cp = cp.loc[( cp['event'] != 'N' ), :]
+  
+  events = apply_parallel(cp.groupby([ 'data_set', 'particle_id', 'event_id' ]), "Processing event summaries", get_event_info)
+  return events
+
+def get_baseline_median(p_data):
+  """
+  Get the RAW baseline median intensity for each particle
+
+  Arguments:
+    data pd.DataFrame The classified particle data
+
+  Returns:
+    pd.DataFrame The data frame with an additional column, raw_baseline_median
+  """
+  baseline_median = np.mean(p_data.loc[(p_data['event'] == 'N'), 'median'])
+  p_data.loc[:, 'raw_baseline_median'] = baseline_median
+
+  return p_data
+
+def get_event_info(e_data):
+  """
+  Get a dataframe summary of each event
+
+  Arguments:
+    data pd.DataFrame The classified event data
+
+  Returns:
+    pd.DataFrame A summary dataframe for this event
+  """
+  event_types = e_data['event'].unique().tolist()
+  durations = []
+  normalized_durations = []
+  fractions_fp_lost = []
+  rupture_sizes = []
+
+  min_stationary_intensity = np.min(e_data['stationary_median'])
+  min_intensity = np.min(e_data['median'])
+  baseline_intensity = e_data['raw_baseline_median'].unique()[0]
+
+  for event_type in event_types:
+    duration = e_data.loc[( e_data['event'] == event_type ), 'event_duration'].unique()[0]
+    durations.append(duration)
+
+    normalized_duration = duration * abs(min_stationary_intensity)
+    normalized_durations.append(normalized_duration)
+
+    fractions_fp_lost.append(min_intensity/baseline_intensity)
+
+    first_time = np.min(e_data['time'])
+    first_velocity = e_data.loc[( e_data['time'] == first_time ), 'median_derivative'].unique()[0]
+
+    # If this is a rupture, the rupture hole can be estimated by the 
+    # following linear relationship:
+    # area nm = -0.01249x-0.01079 where x is in  s^-1
+    rupture_sizes.append(-0.01249*first_velocity-0.01079)
+
+  if len(durations) > 1:
+    duration_sum = np.sum(durations)
+
+    event_types.append("+".join(event_types))
+    durations.append(duration_sum)
+    normalized_durations.append(duration_sum * abs(min_stationary_intensity))
+
+    fractions_fp_lost.append(min_intensity/baseline_intensity)
+    rupture_sizes.append(-0.01249*first_velocity-0.01079)
+
+  data_sets = [ e_data['data_set'].unique()[0] ]*len(event_types)
+  particle_ids = [ e_data['particle_id'].unique()[0] ]*len(event_types)
+  
+  return pd.DataFrame({
+    'data_set': data_sets,
+    'particle_id': particle_ids,
+    'event': event_types,
+    'duration': durations,
+    'normalized_duration': normalized_durations,
+    'fraction_fp_lost': fractions_fp_lost,
+    'rupture_size': rupture_sizes
+  })
 
 def get_cell_summary(data, conf=False):
   """
