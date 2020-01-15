@@ -1,0 +1,3 @@
+[submodule "aicspkg"]
+	path = aicspkg
+	url = https://github.com/AllenInstitute/aics-segmentation.git

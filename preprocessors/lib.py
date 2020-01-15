@@ -10,7 +10,6 @@ import numpy as np
 import pandas as pd
 from scipy import interpolate
 from scipy import spatial
-from statsmodels.tsa.stattools import kpss
 
 def base_transform(data, params):
   """
@@ -39,7 +38,11 @@ def base_transform(data, params):
   data['data_set'] = data_set
 
   # Filter short tracks
-  data = data.groupby([ 'data_set', 'particle_id' ]).filter(lambda x: x['frame_rate'].iloc[0]*len(x) > 28800)
+  if np.max(data['frame'])*frame_rate > 28800:
+    data = data.groupby([ 'data_set', 'particle_id' ]).filter(lambda x: x['frame_rate'].iloc[0]*len(x) > 28800)
+  else:
+    # Need at least 4 datapoints fo fit splines
+    data = data.groupby([ 'data_set', 'particle_id' ]).filter(lambda x: len(x) > 3)
 
   # Sort data
   data = data.sort_values(by=[ 'data_set', 'particle_id', 'time' ])
@@ -58,8 +61,6 @@ def base_transform(data, params):
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(make_stationary, 'scaled_area', 'stationary_area')
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(make_stationary, 'normalized_median', 'stationary_median')
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(make_stationary, 'normalized_sum', 'stationary_sum')
-
-  data = data.groupby([ 'data_set', 'particle_id' ]).apply(z_score, 'mean_cyto', 'z_cyto')
 
   # Interpolate with cubic splines/find derivatives
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'scaled_area', 'area')
@@ -159,23 +160,12 @@ def make_stationary(group, col, new_col):
   Returns:
     Modified Pandas DataFrame
   """
-  import warnings
-  warnings.simplefilter("ignore")
+  # group = group.sort_values(by=["time"])
+  frame_rate = group['frame_rate'].iloc[0]
+  smoothed_mean = sliding_average(group[col], 3600, 1800, frame_rate)
+  group[new_col] = group[col] - smoothed_mean
+  group.loc[(group[new_col] == group[col]), new_col] = np.nan
   
-  result = kpss(group[col], regression='c')
-  test_stat = result[0]
-  critical_val = result[3]['1%']
-
-  if test_stat <= critical_val:
-    # Stationary
-    group[new_col] = group[col]
-  else:
-    group = group.sort_values(by=["time"])
-    frame_rate = group['frame_rate'].iloc[0]
-    smoothed_mean = sliding_average(group[col], 3600, 1800, frame_rate)
-    group[new_col] = group[col] - smoothed_mean
-    group.loc[(group[new_col] == group[col]), new_col] = np.nan
-    
   # Move mean value to 0
   group[new_col] = group[new_col] - np.mean(group[new_col])
 
