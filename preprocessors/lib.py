@@ -32,6 +32,8 @@ def base_transform(data, params):
   """
   data_set = params['data_set']
   frame_rate = params['frame_rate']
+  frame_width = params['frame_width']
+  frame_height = params['frame_height']
 
   data['frame_rate'] = frame_rate
   data['time'] = data['frame']*frame_rate
@@ -43,6 +45,12 @@ def base_transform(data, params):
   else:
     # Need at least 4 datapoints fo fit splines
     data = data.groupby([ 'data_set', 'particle_id' ]).filter(lambda x: len(x) > 3)
+
+  # Filter out particles that are too near the edge
+  data = data.groupby([ 'data_set', 'particle_id' ]).filter(
+    lambda x, frame_width, frame_height: np.min(x['x_px']) >= 50 and np.max(x['x_px']) <= frame_width-50 and np.min(x['y_px']) >= 50 and np.max(x['y_px']) <= frame_width-50, 
+    frame_width = frame_width, frame_height=frame_height
+  )
 
   # Sort data
   data = data.sort_values(by=[ 'data_set', 'particle_id', 'time' ])
@@ -68,9 +76,12 @@ def base_transform(data, params):
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'normalized_sum', 'sum')
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'x', 'x')
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'y', 'y')
+  data = data.groupby([ 'data_set', 'particle_id' ]).apply(find_speed)
 
   # Find nearest neighbors
   data = data.groupby([ 'data_set', 'frame' ]).apply(find_nearest_neighbor_distances)
+
+  data = data.astype({ 'frame': np.uint64 })
 
   return data
 
@@ -134,21 +145,6 @@ def normalize_intensity(group, normalize_by, col, new_col):
   group[new_col] = group[col]/mean_val
   return group
 
-def z_score(group, col, new_col):
-  """
-  Find z-score of given column
-
-  Arguments:
-    group Pandas DataFrame of each frame
-
-  Returns:
-    Modified Pandas DataFrame
-  """
-  mean_val = np.mean(group[col])
-  sd = np.std(group[col])
-  group[new_col] = (group[col]-mean_val)/sd
-  return group
-
 def make_stationary(group, col, new_col):
   """
   If a [col] is not stationary, apply 1st order difference
@@ -192,6 +188,20 @@ def fit_spline(group, fit_column, new_column_stem):
   
   # Find derivative
   group[deriv_column] = interpolate.splev(group['time'], fit, der=1)
+
+  return group
+
+def find_speed(group):
+  """
+  Finds the total speed (magnitude of velocity) given component velocities
+
+  Arguments:
+    group Pandas DataFrame of each particle
+
+  Returns:
+    Modified Pandas DataFrame
+  """
+  group['speed'] = np.sqrt(np.add(np.power(group['x_derivative'], 2), np.power(group['y_derivative'], 2)))
 
   return group
 
