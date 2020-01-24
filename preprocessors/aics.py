@@ -41,7 +41,6 @@ from feature_extraction import tracks
 from lib import base_transform
 
 NAME      = "aics"
-TEMP_PATH = (ROOT_PATH / "tmp").resolve()
 
 def get_default_data_path(input_path):
   """
@@ -76,6 +75,7 @@ def process_data(data_path, params):
   keep_imgs = params['keep_imgs']
 
   tiff_path.mkdir(mode=0o755, parents=True, exist_ok=True)
+  mip_path.mkdir(mode=0o755, parents=True, exist_ok=True)
   
   raw_path = tiff_path / "8-bit"
   raw_path.mkdir(mode=0o755, parents=True, exist_ok=True)
@@ -94,19 +94,17 @@ def process_data(data_path, params):
   files = [ str(x) for x in files ]
   files.sort(key=lambda x: str(len(x)) + x)
 
-  TEMP_PATH.mkdir(mode=0o755, parents=True, exist_ok=True)
-  tmp_label = str(time())
-  tmp_label = "now"
-  tmp_mask_path = TEMP_PATH / (tmp_label)
-
-  tmp_mask_path.mkdir(exist_ok=True)
+  # Frame data to store
+  frame_shape = None
 
   data = {
     'particle_id': [],
     'mask_id': [],
     'frame': [],
     'x': [],
+    'x_px': [],
     'y': [],
+    'y_px': [],
     'area': [],
     'mean': [],
     'min': [],
@@ -147,9 +145,13 @@ def process_data(data_path, params):
 
           # Pre-processing
           sys.stdout = open(os.devnull, 'w') # Suppress print
-          i_norm = intensity_normalization(img, [ 0.5, 1.5 ])
+          i_norm = intensity_normalization(img, [ 10.0, 5.0 ])
           i_smooth = image_smoothing_gaussian_3d(i_norm, sigma=1)
           sys.stdout = sys.__stdout__
+
+          # Store frame size for later
+          if frame_shape is None:
+            frame_shape = img.shape
 
           # Expand image to 3D
           i_smooth = np.repeat(i_smooth[np.newaxis, :, :], 3, axis=0)
@@ -182,6 +184,7 @@ def process_data(data_path, params):
           # Perform a flood fill on all segments
           st_dev = np.std(i_smooth_8bit)
           for region in props:
+
             centroid = np.round(region.centroid).astype(np.uint32)
             new_mask = segmentation.flood(i_smooth_8bit, ( centroid[0], centroid[1] ), tolerance=st_dev/2)
             new_mask = ndi.morphology.binary_fill_holes(new_mask)
@@ -200,7 +203,7 @@ def process_data(data_path, params):
               continue
 
             # Update masks
-            masks[(new_mask == 1)] = region.label
+            masks[( (new_mask == 1) | (masks == region.label) )] = region.label
 
           all_masks.append(masks.copy())
 
@@ -212,7 +215,9 @@ def process_data(data_path, params):
             data['mask_id'].append(region.label)
             data['frame'].append(frame_i)
             data['x'].append(region.centroid[1])
+            data['x_px'].append(int(region.centroid[1]))
             data['y'].append(region.centroid[0])
+            data['y_px'].append(int(region.centroid[0]))
             data['area'].append(region.area)
             data['mean'].append(region.mean_intensity)
             data['min'].append(region.min_intensity)
@@ -229,6 +234,13 @@ def process_data(data_path, params):
   all_masks = np.stack(all_masks, axis=0)
 
   data = pd.DataFrame(data)
+  data = data.astype({
+    'particle_id': 'str',
+    'mask_id': 'int',
+    'frame': 'int',
+    'x_px': 'int',
+    'y_px': 'int'
+  })
 
   # Convert pixels to um
   if pixel_size is None:
@@ -251,12 +263,13 @@ def process_data(data_path, params):
   # Assign particles to tracks
   print("Building tracks...")
   frames = sorted(data['frame'].unique())
-  data['min_frame'] = data['frame']
   data['orig_particle_id'] = data['particle_id']
-
+  
+  data['min_frame'] = data['frame']
   for i in tqdm(frames[:-1], ncols=90, unit="frames"):
     data = tracks.make_tracks(data, i, 10, 3)
   data.drop_duplicates(subset=[ 'particle_id', 'frame' ], inplace=True)
+  data.drop('min_frame', axis='columns', inplace=True)
 
   # "Fill in" gaps where we lost tracking
   data.sort_values(by=[ 'particle_id', 'frame' ], inplace=True)
@@ -274,12 +287,11 @@ def process_data(data_path, params):
       missing_frames = np.setdiff1d(frames, p_data['frame'].unique())
       missing_frames = pd.DataFrame({
         'frame': missing_frames
-      })
+      }, dtype='int')
       missing_frames.sort_values(by=[ 'frame' ])
       missing_frames['track_id'] = (missing_frames['frame'].diff() > 1).cumsum()
       missing_frames.drop_duplicates(subset=[ 'track_id' ], inplace=True)
 
-      min_frame = p_data['min_frame'].iloc[0]
       orig_particle_id = p_data['orig_particle_id'].iloc[0]
 
       for missing_frame in missing_frames['frame'].unique():
@@ -293,18 +305,19 @@ def process_data(data_path, params):
           'mask_id': [],
           'frame': [],
           'x': [],
+          'x_px': [],
           'y': [],
+          'y_px': [],
           'area': [],
           'mean': [],
           'min': [],
           'max': [],
-          'min_frame': [],
           'orig_particle_id': [],
           'track_id': [],
         }
         
-        mask = p_data.loc[( p_data['frame'] == ref_frame ), 'mask_id'].iloc[0]
-
+        mask_id = p_data.loc[( p_data['frame'] == ref_frame ), 'mask_id'].iloc[0]
+        
         # Find ending frame for this gap
         # If there is no end, skip
         stop_frame = p_data.loc[(p_data['frame'] > missing_frame), 'frame'].unique()
@@ -318,9 +331,8 @@ def process_data(data_path, params):
         missing_frame -= 1
         while(missing_frame < stop_frame):
           # Advance
+          ref_frame = missing_frame
           missing_frame += 1
-
-          ref_frame = missing_frame-1
 
           file_name = str(missing_frame).zfill(4) + ".tif"
           i_norm_8bit = cv2.imread(str(raw_path / file_name), cv2.IMREAD_GRAYSCALE)
@@ -328,7 +340,7 @@ def process_data(data_path, params):
 
           # Frame is 1-indexed, but all_masks is 0-indexed
           masks = all_masks[(ref_frame-1),:,:].copy()
-          masks[(masks != mask)] = 0
+          masks[(masks != mask_id)] = 0
 
           props = measure.regionprops(masks, intensity_image=i_norm_8bit)
           if len(props) <= 0:
@@ -353,25 +365,33 @@ def process_data(data_path, params):
 
           # Update masks stack
           masks = all_masks[(missing_frame-1),:,:].copy()
-          masks[(new_mask == mask)] = mask
+          masks[(new_mask == mask_id)] = mask_id
           all_masks[(missing_frame-1),:,:] = masks
 
           # Add in new data
           missing_data['particle_id'].append(particle_id)
-          missing_data['mask_id'].append(mask)
+          missing_data['mask_id'].append(mask_id)
           missing_data['frame'].append(missing_frame)
           missing_data['x'].append(region.centroid[1])
+          missing_data['x_px'].append(int(region.centroid[1]))
           missing_data['y'].append(region.centroid[0])
+          missing_data['y_px'].append(int(region.centroid[0]))
           missing_data['area'].append(region.area)
           missing_data['mean'].append(region.mean_intensity)
           missing_data['min'].append(region.min_intensity)
           missing_data['max'].append(region.max_intensity)
-          missing_data['min_frame'].append(min_frame)
           missing_data['orig_particle_id'].append(orig_particle_id)
           missing_data['track_id'] = 0
 
     if missing_data is not None:
       missing_data = pd.DataFrame(missing_data)
+      missing_data = missing_data.astype({
+        'particle_id': 'str',
+        'mask_id': 'int',
+        'frame': 'int',
+        'x_px': 'int',
+        'y_px': 'int'
+      })
       missing_data['unit_conversion'] = data['unit_conversion'].iloc[0]
       missing_data['area'] = missing_data['area']*(pixel_size**2)
       missing_data['x'] = missing_data['x']*pixel_size
@@ -386,22 +406,80 @@ def process_data(data_path, params):
       data['track_id'] = 0
       data = data.groupby([ 'particle_id' ]).apply(id_track)
 
+  params['frame_width'] = frame_shape[1]
+  params['frame_height'] = frame_shape[0]
   data = base_transform(data, params)
-
-  # Filter out particles that are too near each other
-  data = data.loc[(data['nearest_neighbor_distance'] >= 8*pixel_size),:]
 
   # Build MIP for each particle
   particle_imgs = {} # MIP over the entire video
   ref_particle_imgs = {} # MIP for the first 3 frames
   captured_frames = {} # Number of frames we've captured per pid
   print("Building MIP for each particle...")
-  pids = data.loc[:, 'particle_id'].unique()
 
   prev_img = None
+ 
+  for i in tqdm(frames, ncols=90, unit="frames"):
+    masks = all_masks[(i-1),:,:].copy()
+    img = cv2.imread(str(raw_paths[(i-1)]), cv2.IMREAD_GRAYSCALE)
+    pids = data.loc[( data['frame'] == i ), 'particle_id'].unique()
+
+    for pid in pids:
+      mask = masks.copy()
+      mask_ids = data.loc[( (data['particle_id'] == pid) & (data['frame'] == i) ), 'mask_id'].unique()
+
+      if len(mask_ids) <= 0:
+        continue
+
+      mask_id = mask_ids[0]
+      mask[( mask != mask_id )] = 0
+      mask[( mask == mask_id )] = 1
+      mask = mask.astype(np.uint8)
+
+      if pid not in particle_imgs:
+        particle_imgs[pid] = np.zeros((200,200), dtype=np.uint8)
+        captured_frames[pid] = 0
+
+      # Get just the masked nucleus
+      fg = cv2.bitwise_and(img, img, mask=mask)
+
+      # Crop to 200x200, centered on the nuclear mask
+      coords = data.loc[( (data['frame'] == i) & (data['particle_id'] == pid) ), [ 'x_px', 'y_px' ]]
+      x = coords['x_px'].iloc[0]
+      y = coords['y_px'].iloc[0]
+      
+      fg = hatchvid.crop_frame(fg, x, y, 200, 200)
+
+      # Make a MIP of the previous MIP and this img
+      particle_imgs[pid] = np.amax([ particle_imgs[pid], fg ], axis=0)
+      captured_frames[pid] += 1
+      if captured_frames[pid] < 3:
+        # Make the reference frame
+        ref_particle_imgs[pid] = particle_imgs[pid].copy()
+
+  # Clear out the old images
+  if mip_path.exists():
+    shutil.rmtree(mip_path)
+  mip_path.mkdir(mode=0o755, parents=True, exist_ok=True)
+
+  # Write out our MIPs
+  data['mip_sum'] = 0.0
+  data['mip_masked_sum'] = 0.0
+  for pid, img in particle_imgs.items():
+    idx = (data['particle_id'] == pid)
+    data.loc[idx, 'mip_sum'] = np.sum(img)
+
+    mask = ref_particle_imgs[pid]
+    threshold, mask = cv2.threshold(mask, 1, 255, cv2.THRESH_BINARY_INV)
+    
+    masked = cv2.bitwise_and(img, img, mask=mask)
+    data.loc[idx, 'mip_masked_sum'] = np.sum(masked)
+
+    cv2.imwrite(str(mip_path / (pid + ".tif")), img)
+    cv2.imwrite(str(mip_path / (pid + "-ref.tif")), ref_particle_imgs[pid])
 
   fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-  writer = cv2.VideoWriter(str(tmp_mask_path / ("test/test.mp4")), fourcc, 10, (all_masks.shape[1], all_masks.shape[2]), True)
+  writer = cv2.VideoWriter(str(mip_path / ("test.mp4")), fourcc, 10, (all_masks.shape[1], all_masks.shape[2]), True)
+
   for i in frames:
     masks = all_masks[(i-1),:,:]
     img = cv2.imread(str(raw_paths[(i-1)]), cv2.IMREAD_GRAYSCALE)
@@ -410,52 +488,10 @@ def process_data(data_path, params):
 
     writer.write(labelled)
   writer.release()
-  exit()
 
-  for pid in tqdm(pids, ncols=90, unit="particles"):
-    writer = cv2.VideoWriter(str(tmp_mask_path / ("test/" + pid + ".mp4")), fourcc, 10, (200, 200), False)
-    for i in frames:
-      mask = all_masks[(i-1),:,:].copy()
-      mask_ids = data.loc[( (data['particle_id'] == pid) & (data['frame'] == i) ), 'mask_id'].unique()
-
-      if len(mask_ids) <= 0:
-        continue
-
-      mask_id = mask_ids[0]
-
-      mask[( mask != mask_id )] = 0
-      mask[( mask !=0 )] = 1
-      mask = mask.astype(np.uint8)
-      img = cv2.imread(str(raw_paths[(i-1)]), cv2.IMREAD_GRAYSCALE)
-      
-      # Get just the masked nucleus
-      this_img = cv2.bitwise_and(img, img, mask=mask)
-
-      # Crop to 500x500, centered on the nuclear mask
-      coords = data.loc[( (data['frame'] == i) & (data['particle_id'] == pid) ), [ 'x', 'y' ]]
-      x = int(round(coords['x'].iloc[0]/pixel_size))
-      y = int(round(coords['y'].iloc[0]/pixel_size))
-
-      this_img = hatchvid.crop_frame(this_img, x, y, 200, 200)
-
-      if prev_img is None:
-        prev_img = this_img.copy()
-        continue
-
-      shift, error, diffphase = register_translation(prev_img, this_img)
-
-      tform = transform.SimilarityTransform(scale=1, rotation=0, translation=shift)
-      warped_img = exposure.rescale_intensity(transform.warp(this_img, tform), out_range=(0,np.max(this_img)))
-
-      combined = np.concatenate( ( this_img, warped_img ), axis=1).astype(np.uint8)
-
-      writer.write(this_img)
-
-    writer.release()
-  exit()
+  return data
 
 def id_track(group):
   group['track_id'] = (group['frame'].diff() > 1).cumsum()
 
   return group
-
