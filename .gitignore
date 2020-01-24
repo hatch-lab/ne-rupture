@@ -10,3 +10,4 @@ validate/validation-data/images
 etc/
 notebooks/
 tmp/*
+share/
