@@ -107,15 +107,15 @@ def seed_events(data, tiff_path, tmp_csv_path, conf, idx=0):
 
     data_set = data['data_set'].iloc[idx]
     current_event = data['event'].iloc[idx]
-    frame = data['frame'].iloc[idx]
+    frame = int(data['frame'].iloc[idx])
 
     frame_file_name = str(frame).zfill(4) + '.tif'
     frame_path = (tiff_path / (data_set + "/8-bit/" + frame_file_name)).resolve()
 
     raw_frame = cv2.imread(str(frame_path), cv2.IMREAD_GRAYSCALE)
 
-    x = int(round(data['x'].iloc[idx]/data['x_conversion'].iloc[idx]))
-    y = int(round(data['y'].iloc[idx]/data['y_conversion'].iloc[idx]))
+    x = data['x_px'].iloc[idx]
+    y = data['y_px'].iloc[idx]
 
     # Crop down to just this particle
     crop_frame = hatchvid.crop_frame(raw_frame, x, y, conf['movie_width'], conf['movie_height'])
@@ -125,7 +125,8 @@ def seed_events(data, tiff_path, tmp_csv_path, conf, idx=0):
     crop_frame = exposure.rescale_intensity(crop_frame, in_range=tuple(intensity_range))
 
     # Add a space for text
-    crop_frame = np.concatenate((np.zeros(( 40, crop_frame.shape[1]), dtype=crop_frame.dtype), crop_frame), axis=0)
+    label_buffer = 45
+    crop_frame = np.concatenate((np.zeros(( label_buffer, crop_frame.shape[1]), dtype=crop_frame.dtype), crop_frame), axis=0)
 
     # Invert
     crop_frame = util.invert(crop_frame) if inversion else crop_frame
@@ -144,16 +145,27 @@ def seed_events(data, tiff_path, tmp_csv_path, conf, idx=0):
 
     label = "{:02d}h{:02d}'{:02d}\" ({:d})".format(hours, minutes, seconds, frame)
 
-    # Now add text
+    # Add controls
     img = Image.fromarray(crop_frame)
     draw = ImageDraw.Draw(img)
 
-    controls = "[<] Prev [>] Next [S] Skip \n[-] Less contrast [+] More contrast [I] Invert\n[R] Rupture [M] Mitosis [X] Apoptosis [N] None"
+    controls = "[<] Prev [>] Next [S] Skip [Q] Save & Quit\n[-] Less contrast [+] More contrast [I] Invert\n[R] Rupture [M] Mitosis [X] Apoptosis [N] None"
 
     text_color = 'rgb(0,0,0)' if inversion else 'rgb(255,255,255)'
-    draw.text((10, 10), title, fill=text_color, font=title_font)
-    draw.text((10, 30), label, fill=text_color, font=small_font)
+    reticle_color = 'rgb(255,255,255)' if inversion else 'rgb(0,0,0)'
+    draw.text((10, 15), title, fill=text_color, font=title_font)
+    draw.text((10, 35), label, fill=text_color, font=small_font)
     draw.text((10, crop_frame.shape[0]-50), controls, fill=text_color, font=small_font)
+
+    # Add reticles
+    center_x = int(crop_frame.shape[1]/2)
+    center_y = int((crop_frame.shape[0]+label_buffer)/2)
+    draw.line([ (center_x-10, center_y), (center_x+10, center_y) ], fill=reticle_color, width=2)
+    draw.line([ (center_x, center_y-10), (center_x, center_y+10) ], fill=reticle_color, width=2)
+
+    # Add progress bar
+    width = int(idx/len(data.index)*crop_frame.shape[1])
+    draw.rectangle([ (0, 0), (width, 5) ], fill=text_color)
 
     # Get it back into OpenCV format
     crop_frame = np.array(img)
@@ -571,6 +583,14 @@ def run(data, tiff_path, conf=False, fast=False):
 
   tmp_csv_path = tmp_path / "data.csv"
   
+  # Filter out particles that are too near each other
+  data = data.groupby([ 'data_set', 'particle_id' ]).filter(
+    lambda x: np.min(x['nearest_neighbor_distance']) >= 50*x['x_conversion'].iloc[0]
+  )
+
+  # Filter out particles that are too jumpy
+  data = data.groupby([ 'data_set', 'particle_id' ]).filter(lambda x: np.all(x['speed'] <= 0.05)) # Faster than 0.05 µm/3 min
+
   data.sort_values([ 'data_set', 'particle_id', 'frame' ], inplace=True)
   data.reset_index(inplace=True, drop=True)
   idx = data['current_idx'].iloc[0]

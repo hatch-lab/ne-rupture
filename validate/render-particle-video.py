@@ -93,11 +93,11 @@ if graph_path:
   graph = cv2.imread(str(graph_path))
   movie_height += graph.shape[0]
 
-fourcc = cv2.VideoWriter_fourcc(*'avc1')
+fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 writer = cv2.VideoWriter(str(output_file_path), fourcc, 10, (movie_width, movie_height), True)
 
-start_frame_i = np.min(p_data['frame'])
-end_frame_i = np.max(p_data['frame'])
+start_frame_i = int(np.min(p_data['frame']))
+end_frame_i = int(np.max(p_data['frame']))
 this_frame_i = start_frame_i
 
 ### Loop through and build our movie

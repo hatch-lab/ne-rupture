@@ -101,7 +101,7 @@ zero_frame = zero_frame.astype('uint8')
 ### Initiate our video writer
 output_file_path = str((output_path / (data_set + ".mp4")).resolve())
 
-fourcc = cv2.VideoWriter_fourcc(*'avc1')
+fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 writer = cv2.VideoWriter(output_file_path, fourcc, 10, (width, height), True)
 
 start_frame_i = np.min(data['frame'])
