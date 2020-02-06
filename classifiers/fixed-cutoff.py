@@ -58,14 +58,19 @@ def seed_events(data, conf):
     Panda DataFrame The modified particle data
   """
 
-  r_idx = ((data['stationary_median'] <= conf['median_cutoff']) & (data['stationary_area'] >= conf['area_cutoff']))
+  # Filter out particles that are too near each other
+  data = data.groupby([ 'data_set', 'particle_id' ]).filter(
+    lambda x: np.min(x['nearest_neighbor_distance']) >= 50*x['x_conversion'].iloc[0]
+  )
+
+  # Filter out particles that are too jumpy
+  data = data.groupby([ 'data_set', 'particle_id' ]).filter(lambda x: np.all(x['speed'] <= 0.05)) # Faster than 0.05 µm/3 min
+
+  data.sort_values([ 'data_set', 'particle_id', 'frame' ], inplace=True)
+  data.reset_index(inplace=True, drop=True)
+
+  r_idx = ((data['median_derivative'] <= conf['median_derivative_cutoff']) & (data['stationary_median'] <= conf['median_cutoff']))
   data.loc[r_idx, 'event'] = 'R'
-
-  f_idx = ( (data['event'] == 'R') & (data['stationary_median'] >= conf['confident_median_cutoff']) & (data['nearest_neighbor_distance'] <= conf['neighbor_cutoff']) )
-  data.loc[f_idx, 'event'] = 'N'
-
-  m_idx = ( (data['event'] == 'R') & (data['stationary_sum'] <= conf['sum_cutoff']) )
-  data.loc[m_idx, 'event'] = 'M'
 
   return data
 
@@ -287,7 +292,7 @@ def apply_parallel(grouped, message,  fn, *args):
 
 #   return n_data
 
-def run(data, tiff_path, conf=False, fast=False):
+def run(data, conf=False, fast=False):
   if not conf:
     with CONF_PATH.open(mode='r') as file:
       conf = json.load(file)

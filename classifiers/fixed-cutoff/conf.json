@@ -1,11 +1,6 @@
 {
-  "median_cutoff": 0.0328,
-  "area_cutoff": 0.4037,
-
-  "confident_median_cutoff": -1,
-  "neighbor_cutoff": 25.8199,
-
-  "sum_cutoff": -6.666667e-02,
+  "median_cutoff": -0.0933,
+  "median_derivative_cutoff": -0.0002,
 
   "baseline_median_scale_factor": 0.92,
 

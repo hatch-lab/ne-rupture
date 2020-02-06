@@ -221,19 +221,19 @@ for(m in 1:length(data_sets)) {
         annotate(geom="text", x=0.1, y=-0.05, label="True", alpha=0.8, hjust=0)
     }
 
-    area_cutoff <- classifier_conf[['area_cutoff']]
-    baseline_area <- mean(df$stationary_area[which(df$event == "N")], na.rm=T)
-    area_annotation <- area_cutoff
+    #area_cutoff <- classifier_conf[['area_cutoff']]
+    #baseline_area <- mean(df$stationary_area[which(df$event == "N")], na.rm=T)
+    #area_annotation <- area_cutoff
     area_limit <- max(c(
-      abs(min(c(df$stationary_area*1.5, area_annotation*1.5), na.rm=T)), 
-      abs(max(c(df$stationary_area*1.5, area_annotation*1.5), na.rm=T))
+      abs(min(c(df$median_derivative*1.5), na.rm=T)), 
+      abs(max(c(df$median_derivative*1.5), na.rm=T))
     ), na.rm=T)
     
     area_plot <- base_plot +
-      geom_line(aes(x=time, y=stationary_area)) +
-      annotate(geom="segment", x=-Inf, xend=Inf, y=area_annotation, yend=area_annotation, color="red", alpha=0.7) +
-      annotate(geom="segment", x=-Inf, xend=Inf, y=baseline_area, yend=baseline_area, linetype="dashed", alpha=0.7) +
-      scale_y_continuous(name="Area", limits=c(-area_limit, area_limit)) +
+      geom_line(aes(x=time, y=median_derivative)) +
+      #annotate(geom="segment", x=-Inf, xend=Inf, y=area_annotation, yend=area_annotation, color="red", alpha=0.7) +
+      #annotate(geom="segment", x=-Inf, xend=Inf, y=baseline_area, yend=baseline_area, linetype="dashed", alpha=0.7) +
+      scale_y_continuous(name="Median velocity", limits=c(-area_limit, area_limit)) +
       scale_x_continuous(name="", labels=format_time_labels(), sec.axis = sec_axis(~./frame_rate, name="", labels=format_frame_labels()))
     
     plots[[(length(plots)+1)]] <- plot_grid(median_plot, area_plot, nrow=2, align="v", rel_heights=c(1.4,1.8))

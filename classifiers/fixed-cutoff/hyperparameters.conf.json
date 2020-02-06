@@ -1,6 +1,4 @@
 {
-  "median_cutoff": [ -1, 1 ],
-  "area_cutoff": [ -0.5, 0.5 ],
-  "confident_median_cutoff": [ -1, 1 ],
-  "neighbor_cutoff": [ 0, 100 ]
+  "median_cutoff": [ -0.2, 0.0 ],
+  "median_derivative_cutoff": [ -0.005, 0.005 ]
 }
