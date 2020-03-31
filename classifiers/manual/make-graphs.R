@@ -237,7 +237,7 @@ hole_size_plot <- ggplot(event_data[which(!(event_data$event %in% c("R", "E"))),
   scale_x_discrete(name="") +
   facet_grid(.~data_set)
 
-cairo_pdf(paste0(output, "event-summary.pdf"), width=10.75, height=8.25, onefile=T)
+cairo_pdf(paste0(dirname(output), "/event-summary.pdf"), width=10.75, height=8.25, onefile=T)
 plot_grid(duration_plot, normalized_duration_plot, fp_lost_plot, hole_size_plot,align="h")
 dev.off()
 

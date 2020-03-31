@@ -18,6 +18,7 @@ if(length(new_packages)) {
 }
 
 lapply(package_list, require, character.only = TRUE)
+theme_set(theme_cowplot())
 
 auc <- read.csv(csv_file, stringsAsFactors=F)
 auc$x <- 1-auc$specificity
