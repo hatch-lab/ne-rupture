@@ -80,13 +80,24 @@ select d in */; do test -n "${d}" && break; exit 1; done
 printf '
 Installing NE rupture tool to ~/Documents/'"${d}"'
 '
-git clone --recurse-submodules --branch stable https://github.com/hatch-lab/ne-rupture.git "${d}"
+if [ -d "${d}" ]; then
+  cd "${d}"
+  git pull origin stable
+else
+  git clone --recurse-submodules --branch stable https://github.com/hatch-lab/ne-rupture.git "${d}"
+  cd "${d}"
+fi
 
-echo "source \"~/Documents/${d}/virtualenv-auto-activate.sh\"" >> ~/.bash_profile
+exit
 
-cd "${d}"
+echo "export HATCH_LAB_NE_RUPTURE_TOOL_PATH=\"${d}\"\n" >> ~/.bash_profile
+echo "source \"~/Documents/${d}/bash_functions.sh\"\n" >> ~/.bash_profile
 
 # Set up virtual env
 python3 venv -m --system-site-packages ./.venv
 source .venv/bin/activate
 pip install -r requirements.txt
+deactivate
+printf '
+'"${highlight_color}"'Finished!'"${default_color}"
+'

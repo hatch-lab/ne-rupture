@@ -1,13 +1,9 @@
 .DS_Store
-bin/
-lib/
+.venv/
 .Python
-include/
 *.pyc
 *py.class
 validate/output/
 validate/validation-data/images
-etc/
 notebooks/
 tmp/*
-share/
