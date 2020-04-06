@@ -100,7 +100,7 @@ echo "source \"~/Documents/${d}ne-rupture/bash_functions.sh\"\n" >> ~/.bash_prof
 source ~/.bash_profile
 
 # Set up virtual env
-python3 -m venv --system-site-packages ./.venv
+python3 -m venv ./.venv
 source .venv/bin/activate
 pip install -r requirements.txt
 deactivate
