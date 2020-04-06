@@ -32,7 +32,7 @@ function install_package() {
   signature="$3"
   printf '
 Installing '"${name}"'
-'"${highlight_color}"'You will need to enter your password'"${default_color}"'
+'"${highlight_color}"'You may need to enter your password'"${default_color}"'
 '
   wget --quiet --continue --show-progress ${url}
   filename="${url##*/}"
@@ -105,4 +105,4 @@ pip install -r requirements.txt
 deactivate
 printf '
 '"${highlight_color}"'Finished!'"${default_color}"
-'
+''
