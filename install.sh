@@ -16,6 +16,11 @@ R_package='http://ftp.ussg.iu.edu/CRAN/bin/macosx/R-3.6.3.pkg'
 XQuartz_sig='787b238fb09fec56665f2badf896a2e83e4fe2e0'
 XQuartz_package='https://dl.bintray.com/xquartz/downloads/XQuartz-2.7.11.dmg'
 
+branch="stable"
+if [ "$0" != "" ]; then
+  branch="$0"
+fi
+
 function clear_input_buffer_then_read() {
   while read -d '' -r -t 0; do read -d '' -t 0.1 -n 10000; break; done
   read
@@ -82,9 +87,9 @@ Installing NE rupture tool to ~/Documents/'"${d}"'
 '
 if [ -d "${d}" ]; then
   cd "${d}"
-  git pull origin stable
+  git pull origin ${branch}
 else
-  git clone --recurse-submodules --branch stable https://github.com/hatch-lab/ne-rupture.git "${d}"
+  git clone --recurse-submodules --branch ${branch} https://github.com/hatch-lab/ne-rupture.git "${d}"
   cd "${d}"
 fi
 
