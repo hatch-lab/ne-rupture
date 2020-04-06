@@ -17,9 +17,7 @@ XQuartz_sig='787b238fb09fec56665f2badf896a2e83e4fe2e0'
 XQuartz_package='https://dl.bintray.com/xquartz/downloads/XQuartz-2.7.11.dmg'
 
 branch="stable"
-if [ "$0" != "" ]; then
-  branch="$0"
-elif [ -f ".dev" ]; then
+if [ -f ".dev" ]; then
   branch="dev"
 fi
 
@@ -96,12 +94,13 @@ else
 fi
 
 echo "export HATCH_LAB_NE_RUPTURE_TOOL_PATH=\"${d}ne-rupture\"\n" >> ~/.bash_profile
-echo "source \"~/Documents/${d}ne-rupture/bash_functions.sh\"\n" >> ~/.bash_profile
+echo "source \"${HOME}/Documents/${d}ne-rupture/bash_functions.sh\"\n" >> ~/.bash_profile
 source ~/.bash_profile
 
 # Set up virtual env
 python3 -m venv ./.venv
 source .venv/bin/activate
+pip install --upgrade pip
 pip install -r requirements.txt
 deactivate
 printf '
