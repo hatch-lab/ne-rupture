@@ -93,8 +93,8 @@ else
   cd ne-rupture
 fi
 
-echo "export HATCH_LAB_NE_RUPTURE_TOOL_PATH=\"${d}ne-rupture\"\n" >> ~/.bash_profile
-echo "source \"${HOME}/Documents/${d}ne-rupture/bash_functions.sh\"\n" >> ~/.bash_profile
+echo "export HATCH_LAB_NE_RUPTURE_TOOL_PATH=\"{$HOME}/Documents/${d}ne-rupture\"" >> ~/.bash_profile
+echo "source \"${HOME}/Documents/${d}ne-rupture/bash_functions.sh\"" >> ~/.bash_profile
 source ~/.bash_profile
 
 # Set up virtual env
