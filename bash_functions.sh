@@ -1,12 +1,12 @@
 #!/bin/bash
 nerupture() {
-  cd "${NE_RUPTURE_INSTALL_PATH}"
-  source "${NE_RUPTURE_INSTALL_PATH}/.venv/bin/activate"
-  python "${NE_RUPTURE_INSTALL_PATH}/preprocess.py" aics "${1}"
+  cd "${HATCH_LAB_NE_RUPTURE_TOOL_PATH}"
+  source "${HATCH_LAB_NE_RUPTURE_TOOL_PATH}/.venv/bin/activate"
+  python "${HATCH_LAB_NE_RUPTURE_TOOL_PATH}/preprocess.py" aics "${1}"
   if [ $? -ne 0 ]; then
     printf 'Preprocess failed'
   else
-    python "${NE_RUPTURE_INSTALL_PATH}/classify.py" manual "${1}"
+    python "${HATCH_LAB_NE_RUPTURE_TOOL_PATH}/classify.py" manual "${1}"
   fi
   deactivate
 }

@@ -93,13 +93,20 @@ else
   cd ne-rupture
 fi
 
-echo "export HATCH_LAB_NE_RUPTURE_TOOL_PATH=\"{$HOME}/Documents/${d}ne-rupture\"" >> ~/.bash_profile
-echo "source \"${HOME}/Documents/${d}ne-rupture/bash_functions.sh\"" >> ~/.bash_profile
+echo "export HATCH_LAB_NE_RUPTURE_TOOL_PATH=\"${HOME}/Documents/${d}ne-rupture\"" >> ~/.bash_profile
+echo "source \"\${HATCH_LAB_NE_RUPTURE_TOOL_PATH}/bash_functions.sh\"" >> ~/.bash_profile
 source ~/.bash_profile
 
 # Set up virtual env
-python3 -m venv ./.venv
-source .venv/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate & process_id=$!
+wait $process_id
+if [ $? -ne 0 ]; then
+  printf '
+    '"${warning_color}"'Unable to activate virtual environment.'"${default_color}"'
+    '
+    exit 1
+fi
 pip install --upgrade pip
 pip install -r requirements.txt
 deactivate
