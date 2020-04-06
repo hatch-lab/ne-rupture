@@ -92,6 +92,7 @@ exit
 
 echo "export HATCH_LAB_NE_RUPTURE_TOOL_PATH=\"${d}\"\n" >> ~/.bash_profile
 echo "source \"~/Documents/${d}/bash_functions.sh\"\n" >> ~/.bash_profile
+source ~/.bash_profile
 
 # Set up virtual env
 python3 venv -m --system-site-packages ./.venv
