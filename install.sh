@@ -86,22 +86,21 @@ select d in */; do test -n "${d}" && break; exit 1; done
 printf '
 Installing NE rupture tool to ~/Documents/'"${d}"'
 '
-if [ -d "${d}ne-rupture" ]; then
-  cd "${d}ne-rupture"
+cd "${d}"
+if [ -d "ne-rupture" ]; then
+  cd ne-rupture
   git pull origin ${branch}
 else
   git clone --recurse-submodules --branch ${branch} https://github.com/hatch-lab/ne-rupture.git
-  cd "${d}ne-rupture"
+  cd ne-rupture
 fi
-
-exit
 
 echo "export HATCH_LAB_NE_RUPTURE_TOOL_PATH=\"${d}ne-rupture\"\n" >> ~/.bash_profile
 echo "source \"~/Documents/${d}ne-rupture/bash_functions.sh\"\n" >> ~/.bash_profile
 source ~/.bash_profile
 
 # Set up virtual env
-python3 venv -m --system-site-packages ./.venv
+python3 -m venv --system-site-packages ./.venv
 source .venv/bin/activate
 pip install -r requirements.txt
 deactivate
