@@ -82,7 +82,7 @@ printf '
 select d in */; do test -n "${d}" && break; exit 1; done
 
 printf '
-Installing NE rupture tool to ~/Documents/'"${d}"'
+Installing NE rupture tool to ~/Documents/'"${d}"' with branch '"${highlight_color}${branch}${default_color}"'
 '
 cd "${d}"
 if [ -d "ne-rupture" ]; then
