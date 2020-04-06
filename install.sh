@@ -87,18 +87,18 @@ select d in */; do test -n "${d}" && break; exit 1; done
 printf '
 Installing NE rupture tool to ~/Documents/'"${d}"'
 '
-if [ -d "${d}" ]; then
-  cd "${d}"
+if [ -d "${d}/ne-rupture" ]; then
+  cd "${d}/ne-rupture"
   git pull origin ${branch}
 else
-  git clone --recurse-submodules --branch ${branch} https://github.com/hatch-lab/ne-rupture.git "${d}"
-  cd "${d}"
+  git clone --recurse-submodules --branch ${branch} https://github.com/hatch-lab/ne-rupture.git
+  cd "${d}/ne-rupture"
 fi
 
 exit
 
-echo "export HATCH_LAB_NE_RUPTURE_TOOL_PATH=\"${d}\"\n" >> ~/.bash_profile
-echo "source \"~/Documents/${d}/bash_functions.sh\"\n" >> ~/.bash_profile
+echo "export HATCH_LAB_NE_RUPTURE_TOOL_PATH=\"${d}/ne-rupture\"\n" >> ~/.bash_profile
+echo "source \"~/Documents/${d}/ne-rupture/bash_functions.sh\"\n" >> ~/.bash_profile
 source ~/.bash_profile
 
 # Set up virtual env
