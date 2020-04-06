@@ -47,9 +47,8 @@ Installing '"${name}"'
     exit 1
   fi
 
-  cp ${filename} ~/Desktop/${filename}
-  sudo installer -pkg ~/Desktop/${filename} -target /
-  rm -f ~/Desktop/${filename}
+  sudo installer -pkg ${filename} -target /
+  rm -f ${filename}
 }
 
 set -u
