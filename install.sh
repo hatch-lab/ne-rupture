@@ -19,6 +19,8 @@ XQuartz_package='https://dl.bintray.com/xquartz/downloads/XQuartz-2.7.11.dmg'
 branch="stable"
 if [ "$0" != "" ]; then
   branch="$0"
+elif [ -f ".dev" ]; then
+  branch="dev"
 fi
 
 function clear_input_buffer_then_read() {
