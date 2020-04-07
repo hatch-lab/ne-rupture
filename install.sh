@@ -101,6 +101,8 @@ source ~/.bash_profile
 python3 -m venv .venv
 VIRTUAL_ENV="${HATCH_LAB_NE_RUPTURE_TOOL_PATH}/.venv"
 PATH="${VIRTUAL_ENV}/bin:${PATH}"
+echo $PATH
+which pip
 pip install --upgrade pip
 pip install -r requirements.txt
 printf '
