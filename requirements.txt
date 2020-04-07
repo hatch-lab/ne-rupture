@@ -196,3 +196,4 @@ webencodings==0.5.1
 Werkzeug==0.15.4
 widgetsnbextension==3.4.2
 wrapt==1.11.2
+yaspin==0.16.0
