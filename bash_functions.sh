@@ -1,12 +1,11 @@
-
-nerupture() {
-  cd "${HATCH_LAB_NE_RUPTURE_TOOL_PATH}"
+ner() {
   source "${HATCH_LAB_NE_RUPTURE_TOOL_PATH}/.venv/bin/activate"
-  python "${HATCH_LAB_NE_RUPTURE_TOOL_PATH}/preprocess.py" aics "${1}"
-  if [ $? -ne 0 ]; then
-    printf 'Preprocess failed'
+  if [ "${1}" -eq "segment" ]; then
+    python "${HATCH_LAB_NE_RUPTURE_TOOL_PATH}/preprocess.py" aics "${@:2}"
+  elif [ "${1}" -eq "annotate" ]; then
+    python "${HATCH_LAB_NE_RUPTURE_TOOL_PATH}/classify.py" manual "${@:2}"
   else
-    python "${HATCH_LAB_NE_RUPTURE_TOOL_PATH}/classify.py" manual "${1}"
+    echo "You may specify ner segment or ner annotate"
   fi
   deactivate
 }

@@ -28,52 +28,58 @@ myexperiment-position-1/
 `
 
 Once your files have been organized, copy and paste the following into Terminal:
-`nerupture path/to/myexperiment-position-1`
+`ner segment path/to/myexperiment-position-1`
 
 where `path/to/myexperiment-position-1` is the folder you created above.
+
+Once this finishes, run:
+`ner annotate path/to/myexperiment-position-1`
+
+to actually annotate your TIFFs.
 
 ## Usage
 This tool is split into two programs: 
   - one that processes images, segments them, and identifies the nuclei
   - a second that classifies each nucleus’s events then outputs statistics and information
 
-More to come…
-### `preprocess.py`
+### `segment`
 
 The basic usage is:
-`python preprocess.py matlab path/to/my/experiment-folder`
+`ner segment path/to/my/experiment-folder`
 
-This program has a number of options. By default, the first channel of each image is extracted. If I wanted to extract the second channel, I would execute:
+This program has a number of options. By default, the first channel of each image is extracted. If you want to extract the second channel, execute:
 
-`python preprocess.py matlab path/to/my/experiment-folder --channel=2`
+`ner segment path/to/my/experiment-folder --channel=2`
 
-If I wanted to use a different median filter window size, 10 px instead of the default of 8 px, I would execute:
+If you want to use a different median filter window size, 10 px instead of the default of 8 px, execute:
 
 `python preprocess.py matlab path/to/my/experiment-folder --filter-window=10`
 
 Options can also be combined. The default assumes a 3 min pass time, but if you had a 30 s pass time and wanted to extract the third channel, you would execute:
 
-`python preprocess.py matlab path/to/my/experiment-folder --frame-rate=30 --channel=3`
+`ner segment path/to/my/experiment-folder --frame-rate=30 --channel=3`
 
 #### Options
 `--channel` Which channel to extract (defaults to 1)
 `--filter-window` The window radius for median filtering, in pixels (defaults to 8 px)
 `--gamma` The gamma correction value to use (defaults to 0.5)
-`--pixel-size` The pixels / µm. Defaults to 1. If set to 0 and the TIFF files have this information stored in their metadata, it will be extracted automatically.
+`--pixel-size` The pixels / µm. Defaults to 0. If set to 0 and the TIFF files have this information stored in their metadata, it will be extracted automatically.
 `--rolling-ball-size` The disc radius to use for background subtraction, in microns; this is similar to a rolling ball radius (defaults to 100 µm)
 `--frame-rate` The pass time, in seconds (defaults to 180 s)
 
-### `classify.py`
+### `annotate`
 
 The basic usage is:
-`python classify.py manual path/to/my/experiment-folder`
+`ner annotate path/to/my/experiment-folder`
 
-There are 2 classifiers that you can choose from: `manual` and `fixed-cutoff`. The second tries to automatically identify ruptures, to mixed success. In general, you should use `manual`, which will have you annotate when ruptures occur.
+By default, if you quit annotating before going through all of the TIFFs, the next tiume you run this command, it will pick up where you left off. If you wish to skip this, pass the `--start-over` flag:
 
-If you want to try the automatic classifier, run:
-`python classify.py fixed-cutoff path/to/my/experiment-folder`
+`ner annotate path/to/my/experiment-folder --start-over`
 
-If you don’t need graphs or videos, you can run:
-`python classify.py manual path/to/my/experiment-folder --skip-graphs`
+By default, in addition to a CSV file with annotated data, graphs and videos will be generated. This can take a while; if you want to skip making graphs or videos, pass the `--skip-graphs` flag:
 
-This will only output the CSV file.
+`ner annotate path/to/my/experiment-folder --start-over`
+
+#### Options
+`--skip-graphs` If set, will only output a CSV file; no graphs or videos.
+`--start-over` Start over with annotation even if you haven’t finished annotating this data set.
