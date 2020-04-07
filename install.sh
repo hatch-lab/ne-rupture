@@ -99,17 +99,10 @@ source ~/.bash_profile
 
 # Set up virtual env
 python3 -m venv .venv
-source .venv/bin/activate & process_id=$!
-wait $process_id
-if [ $? -ne 0 ]; then
-  printf '
-    '"${warning_color}"'Unable to activate virtual environment.'"${default_color}"'
-    '
-    exit 1
-fi
+VIRTUAL_ENV="${HATCH_LAB_NE_RUPTURE_TOOL_PATH}/.venv"
+PATH="${VIRTUAL_ENV}/bin:${PATH}"
 pip install --upgrade pip
 pip install -r requirements.txt
-deactivate
 printf '
 '"${highlight_color}"'Finished!'"${default_color}"
 ''

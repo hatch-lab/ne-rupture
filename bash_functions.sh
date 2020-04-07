@@ -1,4 +1,4 @@
-#!/bin/bash
+
 nerupture() {
   cd "${HATCH_LAB_NE_RUPTURE_TOOL_PATH}"
   source "${HATCH_LAB_NE_RUPTURE_TOOL_PATH}/.venv/bin/activate"
