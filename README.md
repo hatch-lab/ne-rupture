@@ -16,7 +16,7 @@ Frames are captured and stored as multi-channel, 16-bit TIFF stacks with many im
 
 To keep things simple, this tool expects files to be organized in a particular way. Each position for each experiment should have its own folder. Within that folder should be a `images/raw` directory that contains those TIFF files: 
 
-`
+```
 myexperiment-position-1/
   images/
     raw/
@@ -25,7 +25,7 @@ myexperiment-position-1/
       t2.tiff
       ...
       t498.tiff
-`
+```
 
 Once your files have been organized, copy and paste the following into Terminal:
 `ner segment path/to/myexperiment-position-1`
@@ -60,12 +60,12 @@ Options can also be combined. The default assumes a 3 min pass time, but if you 
 `ner segment path/to/my/experiment-folder --frame-rate=30 --channel=3`
 
 #### Options
-`--channel` Which channel to extract (defaults to 1)
-`--filter-window` The window radius for median filtering, in pixels (defaults to 8 px)
-`--gamma` The gamma correction value to use (defaults to 0.5)
-`--pixel-size` The pixels / µm. Defaults to 0. If set to 0 and the TIFF files have this information stored in their metadata, it will be extracted automatically.
-`--rolling-ball-size` The disc radius to use for background subtraction, in microns; this is similar to a rolling ball radius (defaults to 100 µm)
-`--frame-rate` The pass time, in seconds (defaults to 180 s)
+- `--channel` Which channel to extract (defaults to 1)
+- `--filter-window` The window radius for median filtering, in pixels (defaults to 8 px)
+- `--gamma` The gamma correction value to use (defaults to 0.5)
+- `--pixel-size` The pixels / µm. Defaults to 0. If set to 0 and the TIFF files have this information stored in their metadata, it will be extracted automatically.
+- `--rolling-ball-size` The disc radius to use for background subtraction, in microns; this is similar to a rolling ball radius (defaults to 100 µm)
+- `--frame-rate` The pass time, in seconds (defaults to 180 s)
 
 ### `annotate`
 
@@ -81,5 +81,5 @@ By default, in addition to a CSV file with annotated data, graphs and videos wil
 `ner annotate path/to/my/experiment-folder --start-over`
 
 #### Options
-`--skip-graphs` If set, will only output a CSV file; no graphs or videos.
-`--start-over` Start over with annotation even if you haven’t finished annotating this data set.
+- `--skip-graphs` If set, will only output a CSV file; no graphs or videos
+- `--start-over` Start over with annotation even if you haven’t finished annotating this data set
