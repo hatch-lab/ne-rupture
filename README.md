@@ -1,3 +1,7 @@
+TODO:
+Go through packages and install one by one to get updated requirements.txt
+Go through and upgrade packages as needed
+
 # Hatch Lab automated NE rupture/repair detection
 
 ## Installation
@@ -8,6 +12,7 @@
 ### Installation of the video analysis tool
 1. Make or find a directory where you would like to install the tool in your `Documents` folder.
 2. In Terminal (located in /Applications/Utilities), copy and paste the following:
+
 `/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/hatch-lab/ne-rupture/stable/install.sh)"`
 3. The tool should now be installed.
 
@@ -28,11 +33,13 @@ myexperiment-position-1/
 ```
 
 Once your files have been organized, copy and paste the following into Terminal:
+
 `ner segment path/to/myexperiment-position-1`
 
 where `path/to/myexperiment-position-1` is the folder you created above.
 
 Once this finishes, run:
+
 `ner annotate path/to/myexperiment-position-1`
 
 to actually annotate your TIFFs.
