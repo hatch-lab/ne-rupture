@@ -43,7 +43,7 @@ if(!("true_event" %in% names(data))) {
 package_list <- c("ggplot2", "cowplot", "jsonlite", "rlist", "plyr", "grDevices")
 new_packages <- package_list[!(package_list %in% installed.packages()[,"Package"])]
 if(length(new_packages)) {
-  install.packages(new_packages, repos = "http://ftp.ussg.ui.edu/CRAN/")
+  install.packages(new_packages, repos = "http://ftp.ussg.iu.edu/CRAN/")
 }
 
 lapply(package_list, require, character.only = TRUE)
