@@ -93,9 +93,11 @@ else
   cd ne-rupture
 fi
 
-echo "export HATCH_LAB_NE_RUPTURE_TOOL_PATH=\"${HOME}/Documents/${d}ne-rupture\"" >> ~/.bash_profile
-echo "source \"\${HATCH_LAB_NE_RUPTURE_TOOL_PATH}/bash_functions.sh\"" >> ~/.bash_profile
-source ~/.bash_profile
+echo "export HATCH_LAB_NE_RUPTURE_TOOL_PATH=\"${HOME}/Documents/${d}ne-rupture\"" >> ~/.bashrc
+echo "source \"\${HATCH_LAB_NE_RUPTURE_TOOL_PATH}/bash_functions.sh\"" >> ~/.bashrc
+echo "export HATCH_LAB_NE_RUPTURE_TOOL_PATH=\"${HOME}/Documents/${d}ne-rupture\"" >> ~/.zshrc
+echo "source \"\${HATCH_LAB_NE_RUPTURE_TOOL_PATH}/bash_functions.sh\"" >> ~/.zshrc
+source ~/.zshrc
 
 # Set up virtual env
 python3 -m venv .venv

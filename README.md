@@ -10,6 +10,7 @@
 2. In Terminal (located in /Applications/Utilities), copy and paste the following:
 
 `/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/hatch-lab/ne-rupture/stable/install.sh)"`
+
 3. The tool should now be installed.
 
 ## Quickstart
