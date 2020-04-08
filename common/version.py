@@ -1,2 +1,2 @@
 def get_version():
-  return 'NE-classifier 1.0'
+  return 'NE-classifier 1.3'
