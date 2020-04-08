@@ -1,7 +1,3 @@
-TODO:
-Go through packages and install one by one to get updated requirements.txt
-Go through and upgrade packages as needed
-
 # Hatch Lab automated NE rupture/repair detection
 
 ## Installation
