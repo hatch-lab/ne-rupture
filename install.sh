@@ -31,7 +31,9 @@ function install_package() {
   name="$1"
   url="$2"
   signature="$3"
-  package_name="$4"
+  if [ $# -gt 3 ]; then
+    package_name="$4"
+  fi
   printf '
 Installing '"${name}"'
 '"${highlight_color}"'You may need to enter your password'"${default_color}"'
@@ -49,7 +51,7 @@ Installing '"${name}"'
 
   extension="${filename##*.}"
 
-  if [ "${extension}" = "dmg" ]; then
+  if [ "${extension}" = "dmg" ] && [ $# -gt 3 ]; then
     hdiutil attach "${filename}"
     volume="${filename%.*}"
     sudo installer -pkg "/Volumes/${volume}/${package_name}" -target /
