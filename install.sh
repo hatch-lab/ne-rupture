@@ -69,7 +69,7 @@ Installing Homebrew package manager
 printf '
 Installing software packages
 '
-brew install python3 git wget cairo
+brew install python3 git wget cairo coreutils
 
 # Install R and XQuartz
 install_package "R" ${R_package} ${R_sig}

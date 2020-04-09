@@ -51,7 +51,7 @@ arguments = docopt(__doc__, version=get_version())
 
 schema = Schema({
   'PROCESSOR': And(len, lambda n: (ROOT_PATH / ('preprocessors/' + str(n) + '.py')).is_file(), error='That preprocessor does not exist'),
-  'INPUT': And(len, lambda n: os.path.exists(n), error='INPUT does not exist'),
+  'INPUT': And(len, lambda n: os.path.exists(n), error='That folder does not exist'),
   '--output-dir': len,
   '--output-name': len,
   '--img-dir': Or(None, len),
