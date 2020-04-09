@@ -78,7 +78,7 @@ install_package "XQuartz" ${XQuartz_package} ${XQuartz_sig}
 # Clone repo
 cd ~/Documents
 printf '
-'"${highlight_color}"'Where do you want to install the tool?'"${default_color}\n"
+'"${highlight_color}"'Enter the number corresponding to the folder you want to install this tool.'"${default_color}\n"
 select d in */; do test -n "${d}" && break; exit 1; done
 
 printf '

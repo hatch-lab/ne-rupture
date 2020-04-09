@@ -9,9 +9,11 @@
 1. Make or find a directory where you would like to install the tool in your `Documents` folder.
 2. In Terminal (located in /Applications/Utilities), copy and paste the following:
 
-`/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/hatch-lab/ne-rupture/stable/install.sh)"`
+`/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/hatch-lab/ne-rupture/stable/install.sh)" && source ~/.zshrc`
 
-3. The tool should now be installed.
+3. Follow the prompts.
+
+4. The tool should now be installed.
 
 ## Quickstart
 Frames are captured and stored as multi-channel, 16-bit TIFF stacks with many images stored in one or more TIFF files. 
