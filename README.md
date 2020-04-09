@@ -18,7 +18,7 @@
 ## Quickstart
 Frames are captured and stored as multi-channel, 16-bit TIFF stacks with many images stored in one or more TIFF files. 
 
-To keep things simple, this tool expects files to be organized in a particular way. Each position for each experiment should have its own folder. Within that folder should be a `images/raw` directory that contains those TIFF files: 
+To keep things simple, this tool expects files to be organized in a particular way. Each position for each experiment should have its own folder. Within that folder should be an `images/raw` directory that contains those TIFF files: 
 
 ```
 myexperiment-position-1/
@@ -78,13 +78,13 @@ Options can also be combined. The default assumes a 3 min pass time, but if you 
 The basic usage is:
 `ner annotate path/to/my/experiment-folder`
 
-By default, if you quit annotating before going through all of the TIFFs, the next tiume you run this command, it will pick up where you left off. If you wish to skip this, pass the `--start-over` flag:
+By default, if you quit annotating before going through all of the TIFFs, the next time you run this command, it will pick up where you left off. If you wish to start over instead, pass the `--start-over` flag:
 
 `ner annotate path/to/my/experiment-folder --start-over`
 
 By default, in addition to a CSV file with annotated data, graphs and videos will be generated. This can take a while; if you want to skip making graphs or videos, pass the `--skip-graphs` flag:
 
-`ner annotate path/to/my/experiment-folder --start-over`
+`ner annotate path/to/my/experiment-folder --skip-graphs`
 
 #### Options
 - `--skip-graphs` If set, will only output a CSV file; no graphs or videos

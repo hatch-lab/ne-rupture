@@ -15,6 +15,7 @@ R_package='http://ftp.ussg.iu.edu/CRAN/bin/macosx/R-3.6.3.pkg'
 
 XQuartz_sig='787b238fb09fec56665f2badf896a2e83e4fe2e0'
 XQuartz_package='https://dl.bintray.com/xquartz/downloads/XQuartz-2.7.11.dmg'
+XQuartz_package_name='XQuartz.pkg'
 
 branch="stable"
 if [ -f ".dev" ]; then
@@ -30,6 +31,7 @@ function install_package() {
   name="$1"
   url="$2"
   signature="$3"
+  package_name="$4"
   printf '
 Installing '"${name}"'
 '"${highlight_color}"'You may need to enter your password'"${default_color}"'
@@ -45,7 +47,14 @@ Installing '"${name}"'
     exit 1
   fi
 
-  sudo installer -pkg ${filename} -target /
+  extension="${filename##*.}"
+
+  if [ "${extension}" = "dmg" ]; then
+    hdiutil attach "${filename}"
+    volume="${filename%.*}"
+    sudo installer -pkg "/Volumes/${volume}/${package_name}" -target /
+    hdiutil detach "/Volumes/${volume}"
+  fi
   rm -f ${filename}
 }
 
@@ -73,7 +82,7 @@ brew install python3 git wget cairo coreutils
 
 # Install R and XQuartz
 install_package "R" ${R_package} ${R_sig}
-install_package "XQuartz" ${XQuartz_package} ${XQuartz_sig}
+install_package "XQuartz" ${XQuartz_package} ${XQuartz_sig} ${XQuartz_package_name}
 
 # Clone repo
 cd ~/Documents
@@ -97,6 +106,7 @@ echo "export HATCH_LAB_NE_RUPTURE_TOOL_PATH=\"${HOME}/Documents/${d}ne-rupture\"
 echo "source \"\${HATCH_LAB_NE_RUPTURE_TOOL_PATH}/bash_functions.sh\"" >> ~/.bashrc
 echo "export HATCH_LAB_NE_RUPTURE_TOOL_PATH=\"${HOME}/Documents/${d}ne-rupture\"" >> ~/.zshrc
 echo "source \"\${HATCH_LAB_NE_RUPTURE_TOOL_PATH}/bash_functions.sh\"" >> ~/.zshrc
+source ~/.zshrc
 
 # Set up virtual env
 python3 -m venv .venv
