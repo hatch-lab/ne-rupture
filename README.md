@@ -89,3 +89,6 @@ By default, in addition to a CSV file with annotated data, graphs and videos wil
 #### Options
 - `--skip-graphs` If set, will only output a CSV file; no graphs or videos
 - `--start-over` Start over with annotation even if you haven’t finished annotating this data set
+
+## Output
+More description coming soon.
