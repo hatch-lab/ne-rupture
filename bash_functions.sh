@@ -2,6 +2,7 @@ ner() {
   source "${HATCH_LAB_NE_RUPTURE_TOOL_PATH}/.venv/bin/activate"
   if [ abs_path="`dir_resolve \"${2}\"`" ]; then
     # Nothing
+    echo ""
   else
     echo "The provided path ${2} does not exist"
   fi

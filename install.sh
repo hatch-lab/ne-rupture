@@ -97,7 +97,6 @@ echo "export HATCH_LAB_NE_RUPTURE_TOOL_PATH=\"${HOME}/Documents/${d}ne-rupture\"
 echo "source \"\${HATCH_LAB_NE_RUPTURE_TOOL_PATH}/bash_functions.sh\"" >> ~/.bashrc
 echo "export HATCH_LAB_NE_RUPTURE_TOOL_PATH=\"${HOME}/Documents/${d}ne-rupture\"" >> ~/.zshrc
 echo "source \"\${HATCH_LAB_NE_RUPTURE_TOOL_PATH}/bash_functions.sh\"" >> ~/.zshrc
-source ~/.zshrc
 
 # Set up virtual env
 python3 -m venv .venv
