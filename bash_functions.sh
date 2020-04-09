@@ -8,6 +8,7 @@ ner segment [folder]
 ner annotate [folder]
   Annotate the segmented TIFFs located in [folder]
 '
+    return
   fi
 
   source "${HATCH_LAB_NE_RUPTURE_TOOL_PATH}/.venv/bin/activate"
