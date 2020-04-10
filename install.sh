@@ -56,6 +56,8 @@ Installing '"${name}"'
     volume="${filename%.*}"
     sudo installer -pkg "/Volumes/${volume}/${package_name}" -target /
     hdiutil detach "/Volumes/${volume}"
+  else
+    sudo installer -pkg "${filename}" -target /
   fi
   rm -f ${filename}
 }
