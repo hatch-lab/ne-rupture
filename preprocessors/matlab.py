@@ -34,6 +34,11 @@ import matlab.engine
 from skimage import exposure, img_as_ubyte, filters, morphology
 from skimage.util import crop, pad
 from skimage.external import tifffile
+import scipy.io as sio
+
+from skimage.feature import register_translation
+from skimage.feature.register_translation import _upsampled_dft
+from skimage import transform as tf
 
 import math
 
@@ -159,58 +164,43 @@ def process_data(data_path, params):
     exit(1)
   files.sort(key=lambda x: str(len(x)) + x)
   
-  frame_i = 1
-  for file in files:
-    with tifffile.TiffFile(file) as tif:
-      if pixel_size is None and 'XResolution' in tif.pages[0].tags:
-        pixel_size = tif.pages[0].tags['XResolution'].value
-        dtype = tif.pages[0].tags['XResolution'].dtype
+  # frame_i = 1
+  # for file in files:
+  #   with tifffile.TiffFile(file) as tif:
+  #     if pixel_size is None and 'XResolution' in tif.pages[0].tags:
+  #       pixel_size = tif.pages[0].tags['XResolution'].value
+  #       dtype = tif.pages[0].tags['XResolution'].dtype
 
-        if len(pixel_size) == 2:
-          pixel_size = pixel_size[0]
+  #       if len(pixel_size) == 2:
+  #         pixel_size = pixel_size[0]
 
-        if dtype == '1I':
-          # Convert from inches to microns
-          pixel_size = pixel_size*3.937E-5
-        elif dtype == '2I':
-          # Convert from meters to microns
-          pixel_size = pixel_size*1E-6
+  #       if dtype == '1I':
+  #         # Convert from inches to microns
+  #         pixel_size = pixel_size*3.937E-5
+  #       elif dtype == '2I':
+  #         # Convert from meters to microns
+  #         pixel_size = pixel_size*1E-6
 
-      for i in range(len(tif.pages)):
-        print("  Processing frame " + str(frame_i) + "...")
-        raw, img = process_image(tif.pages[i].asarray(), channel, filter_window, gamma, pixel_size, rolling_ball_size)
+  #     for i in range(len(tif.pages)):
+  #       print("  Processing frame " + str(frame_i) + "...")
+  #       raw, img = process_image(tif.pages[i].asarray(), channel, filter_window, gamma, pixel_size, rolling_ball_size)
 
-        file_name = str(frame_i).zfill(4) + ".tif"
-        tifffile.TiffWriter(str(tiff_path / file_name)).save(img, resolution=(pixel_size, pixel_size, None))
-        tifffile.TiffWriter(str(raw_path / file_name)).save(raw, resolution=(pixel_size, pixel_size, None))
-        frame_i += 1
-
-  # cmd = [
-  #   str(FIJI_PATH),
-  #   "--headless",
-  #   str(PREPROCESSOR_PATH),
-  #   str(data_path) + "/",
-  #   str(tiff_path) + "/",
-  #   "--filter-window=" + str(filter_window),
-  #   "--gamma=" + str(gamma),
-  #   "--channel=" + str(channel),
-  #   "--pixel-size=" + str(pixel_size),
-  #   "--rolling-ball-size=" + str(rolling_ball_size)
-  # ]
-  # try:
-  #   subprocess.check_call(cmd)
-  # except subprocess.CalledProcessError:
-  #   print(colorize("red", "Unable to process TIFFs"))
-  #   exit(1)
+  #       file_name = str(frame_i).zfill(4) + ".tif"
+  #       tifffile.TiffWriter(str(tiff_path / file_name)).save(img, resolution=(pixel_size, pixel_size, None))
+  #       tifffile.TiffWriter(str(raw_path / file_name)).save(raw, resolution=(pixel_size, pixel_size, None))
+  #       frame_i += 1
 
   frame_paths = list(tiff_path.glob("*.tif"))
   # Filter out ._ files OS X likes to make
   frame_paths = list(filter(lambda x: x.name[:2] != "._", frame_paths))
+  raw_paths = [ str(raw_path / x.name) for x in frame_paths]
   frame_paths = [ str(x) for x in frame_paths ]
   frame_paths.sort()
+  raw_paths.sort()
 
   TEMP_PATH.mkdir(mode=0o755, parents=True, exist_ok=True)
   tmp_label = str(time())
+  tmp_label = "1576544943.953862"
   tmp_csv_path = TEMP_PATH / (tmp_label + ".csv")
   tmp_mask_path = TEMP_PATH / (tmp_label)
 
@@ -225,15 +215,15 @@ def process_data(data_path, params):
   print("Running MATLAB feature extraction...")
   start = time()
   MATLAB.cd(str(MATLAB_PATH))
-  promise = MATLAB.process_video(frame_paths, pixel_size, str(tmp_csv_path), str(tmp_mask_path), stdout=out, background=True)
-  # MATLAB.process_video(frame_paths, pixel_size, str(tmp_csv_path), str(tmp_mask_path))
-  bar = progressbar.ProgressBar(term_width = 35, max_value = progressbar.UnknownLength, widgets=[ progressbar.BouncingBar() ])
-  while promise.done() is not True:
-    bar.update(1)
-    sleep(0.2)
+  # promise = MATLAB.process_video(frame_paths, pixel_size, str(tmp_csv_path), str(tmp_mask_path), stdout=out, background=True)
+  # # MATLAB.process_video(frame_paths, pixel_size, str(tmp_csv_path), str(tmp_mask_path))
+  # bar = progressbar.ProgressBar(term_width = 35, max_value = progressbar.UnknownLength, widgets=[ progressbar.BouncingBar() ])
+  # while promise.done() is not True:
+  #   bar.update(1)
+  #   sleep(0.2)
 
-  bar.finish()
-  print("Finished in " + str((time() - start)/60) + " min")
+  # bar.finish()
+  # print("Finished in " + str((time() - start)/60) + " min")
 
   data = pd.read_csv(str(tmp_csv_path), dtype = { 'particle_id': str })
   data['x_conversion'] = pixel_size
@@ -258,13 +248,61 @@ def process_data(data_path, params):
   data = data.loc[(data['nearest_neighbor_distance'] >= 8*pixel_size),:]
 
   # Build MIP for each particle
-  # particle_imgs = {} # MIP over the entire video
-  # ref_particle_imgs = {} # MIP for the first 3 frames
-  # captured_frames = {} # Number of frames we've captured per pid
-  # print("Building MIP for each particle...")
+  particle_imgs = {} # MIP over the entire video
+  ref_particle_imgs = {} # MIP for the first 3 frames
+  captured_frames = {} # Number of frames we've captured per pid
+  print("Building MIP for each particle...")
+  pids = data.loc[:, 'particle_id'].unique()
+
+  prev_img = None
+
+  fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+  for pid in tqdm(pids, ncols=90, unit="particles"):
+    writer = cv2.VideoWriter(str(tmp_mask_path / ("test/" + pid + ".mp4")), fourcc, 10, (400, 200), False)
+    for i in frames:
+      mask = np.matrix(sio.loadmat(str(tmp_mask_path / (str(i) + ".mat")))['Lnuc'], dtype=np.uint8)
+      img = cv2.imread(raw_paths[(i-1)], cv2.IMREAD_GRAYSCALE)
+
+      matlab_id = data.loc[( (data['frame'] == i) & (data['particle_id'] == pid) ), 'orig_particle_id']
+      if matlab_id.shape[0] <= 0:
+        continue
+      matlab_id = int(matlab_id.iloc[0].split(".")[1])
+
+      this_mask = mask.copy()
+      this_mask[this_mask != matlab_id] = 0
+      this_mask[this_mask == matlab_id] = 1
+
+      # Get just the masked nucleus
+      this_img = cv2.bitwise_and(img, img, mask=this_mask)
+
+      # Crop to 500x500, centered on the nuclear mask
+      coords = data.loc[( (data['frame'] == i) & (data['particle_id'] == pid) ), [ 'x', 'y' ]]
+      x = int(round(coords['x'].iloc[0]/pixel_size))
+      y = int(round(coords['y'].iloc[0]/pixel_size))
+
+      this_img = hatchvid.crop_frame(this_img, x, y, 200, 200)
+
+      if prev_img is None:
+        prev_img = this_img.copy()
+        continue
+
+      shift, error, diffphase = register_translation(prev_img, this_img)
+
+      tform = tf.SimilarityTransform(scale=1, rotation=0, translation=shift)
+      warped_img = exposure.rescale_intensity(tf.warp(this_img, tform), out_range=(0,np.max(this_img)))
+
+      combined = np.concatenate( ( this_img, warped_img ), axis=1).astype(np.uint8)
+
+      writer.write(combined)
+
+    writer.release()
+  exit()
+
+      
+
   # for i in tqdm(frames, ncols=90, unit="frames"):
   #   mask = np.matrix(sio.loadmat(str(tmp_mask_path / (str(i) + ".mat")))['Lnuc'], dtype=np.uint8)
-  #   img = cv2.imread(frame_paths[(i-1)], cv2.IMREAD_GRAYSCALE)
+  #   img = cv2.imread(raw_paths[(i-1)], cv2.IMREAD_GRAYSCALE)
     
   #   for pid in data.loc[(data['frame'] == i), 'particle_id']:
       
