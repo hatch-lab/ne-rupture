@@ -71,11 +71,11 @@ def process_data(data_path, params):
   channel = params['channel']
   pixel_size = params['pixel_size']
   tiff_path = params['tiff_path']
-  mip_path = params['mip_path']
+  crop_path = params['crop_path']
   keep_imgs = params['keep_imgs']
 
   tiff_path.mkdir(mode=0o755, parents=True, exist_ok=True)
-  mip_path.mkdir(mode=0o755, parents=True, exist_ok=True)
+  crop_path.mkdir(mode=0o755, parents=True, exist_ok=True)
   
   raw_path = tiff_path / "8-bit"
   raw_path.mkdir(mode=0o755, parents=True, exist_ok=True)
@@ -410,14 +410,27 @@ def process_data(data_path, params):
   params['frame_height'] = frame_shape[0]
   data = base_transform(data, params)
 
-  # Build MIP for each particle
-  particle_imgs = {} # MIP over the entire video
-  ref_particle_imgs = {} # MIP for the first 3 frames
-  captured_frames = {} # Number of frames we've captured per pid
-  print("Building MIP for each particle...")
+  # Write out crops
+  print("Making masked crops...")
 
-  prev_img = None
- 
+  # Clear out the old images
+  if crop_path.exists():
+    shutil.rmtree(crop_path)
+  crop_path.mkdir(mode=0o755, parents=True, exist_ok=True)
+
+  last_pids = []
+  flow_data = {
+    'particle_id': [],
+    'frame': [],
+    'max_flow_mag': [],
+    'min_flow_mag': [],
+    'std_flow_mag': [],
+    'max_flow_ang': [],
+    'min_flow_ang': [],
+    'std_flow_ang': []
+  }
+  last_img = None
+  img = None
   for i in tqdm(frames, ncols=90, unit="frames"):
     masks = all_masks[(i-1),:,:].copy()
     img = cv2.imread(str(raw_paths[(i-1)]), cv2.IMREAD_GRAYSCALE)
@@ -435,60 +448,69 @@ def process_data(data_path, params):
       mask[( mask == mask_id )] = 1
       mask = mask.astype(np.uint8)
 
-      if pid not in particle_imgs:
-        particle_imgs[pid] = np.zeros((200,200), dtype=np.uint8)
-        captured_frames[pid] = 0
-
       # Get just the masked nucleus
       fg = cv2.bitwise_and(img, img, mask=mask)
 
-      # Crop to 200x200, centered on the nuclear mask
+      # Crop to 150x150, centered on the nuclear mask
       coords = data.loc[( (data['frame'] == i) & (data['particle_id'] == pid) ), [ 'x_px', 'y_px' ]]
       x = coords['x_px'].iloc[0]
       y = coords['y_px'].iloc[0]
       
-      fg = hatchvid.crop_frame(fg, x, y, 200, 200)
+      fg = hatchvid.crop_frame(fg, x, y, 150, 150)
+      cv2.imwrite(str(crop_path / (pid + "-" + str(i) + ".tif")), fg)
 
-      # Make a MIP of the previous MIP and this img
-      particle_imgs[pid] = np.amax([ particle_imgs[pid], fg ], axis=0)
-      captured_frames[pid] += 1
-      if captured_frames[pid] < 3:
-        # Make the reference frame
-        ref_particle_imgs[pid] = particle_imgs[pid].copy()
+      # Calculate optical flow
+      if last_img is not None and pid in last_pids:
+        # First, get the unmasked image
+        this_crop = hatchvid.crop_frame(img, x, y, 150, 150)
+        last_crop = hatchvid.crop_frame(last_img, x, y, 150, 150)
 
-  # Clear out the old images
-  if mip_path.exists():
-    shutil.rmtree(mip_path)
-  mip_path.mkdir(mode=0o755, parents=True, exist_ok=True)
+        # Mask off this_crop, last_crop
+        mask = fg.copy()
+        mask[mask != 0] = 1
 
-  # Write out our MIPs
-  data['mip_sum'] = 0.0
-  data['mip_masked_sum'] = 0.0
-  for pid, img in particle_imgs.items():
-    idx = (data['particle_id'] == pid)
-    data.loc[idx, 'mip_sum'] = np.sum(img)
+        # Widen out the mask/fill holes
+        mask = morphology.binary_dilation(mask, morphology.disk(3)).astype(np.uint8)
 
-    mask = ref_particle_imgs[pid]
-    threshold, mask = cv2.threshold(mask, 1, 255, cv2.THRESH_BINARY_INV)
-    
-    masked = cv2.bitwise_and(img, img, mask=mask)
-    data.loc[idx, 'mip_masked_sum'] = np.sum(masked)
+        # Make a ring
+        enlarged_mask = morphology.binary_dilation(mask, morphology.disk(5)).astype(np.uint8)
+        enlarged_mask[mask == 1] = 0
 
-    cv2.imwrite(str(mip_path / (pid + ".tif")), img)
-    cv2.imwrite(str(mip_path / (pid + "-ref.tif")), ref_particle_imgs[pid])
+        this_mask = this_crop.copy()
+        last_mask = last_crop.copy()
+        
+        this_mask *= enlarged_mask
+        last_mask *= enlarged_mask
 
-  fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-  writer = cv2.VideoWriter(str(mip_path / ("test.mp4")), fourcc, 10, (all_masks.shape[1], all_masks.shape[2]), True)
+        # Calc the optical flow between the masked versions
+        flow = cv2.calcOpticalFlowFarneback(last_mask,this_mask, None, 0.5, 3, 15, 3, 7, 1.5, 0)
 
-  for i in frames:
-    masks = all_masks[(i-1),:,:]
-    img = cv2.imread(str(raw_paths[(i-1)]), cv2.IMREAD_GRAYSCALE)
-    labelled = label2rgb(masks, image=img)
-    labelled = exposure.rescale_intensity(labelled, in_range=(0,1), out_range='uint8').astype(np.uint8)
+        flow_data['particle_id'].append(pid)
+        flow_data['frame'].append(i)
+        flow_data['max_flow_mag'].append(np.max(flow[...,0]))
+        flow_data['min_flow_mag'].append(np.min(flow[...,0]))
+        flow_data['std_flow_mag'].append(np.std(flow[...,0]))
+        flow_data['max_flow_ang'].append(np.max(flow[...,1]))
+        flow_data['min_flow_ang'].append(np.min(flow[...,1]))
+        flow_data['std_flow_ang'].append(np.std(flow[...,1]))
 
-    writer.write(labelled)
-  writer.release()
+    # Save last_crop
+    last_img = img.copy()
 
+    last_pids = pids
+  
+  flow_data = pd.DataFrame(flow_data)
+  flow_data = flow_data.astype({
+    'particle_id': 'str',
+    'frame': 'int',
+    'max_flow_mag': 'float',
+    'min_flow_mag': 'float',
+    'std_flow_mag': 'float',
+    'max_flow_ang': 'float',
+    'min_flow_ang': 'float',
+    'std_flow_ang': 'float'
+  })
+  data = pd.merge(data, flow_data, on=['particle_id', 'frame'], how='left', left_index=True)
   return data
 
 def id_track(group):

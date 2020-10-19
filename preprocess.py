@@ -4,7 +4,7 @@
 Gets data into a format readable by classifiers
 
 Usage:
-  preprocess.py PROCESSOR INPUT [--output-dir=<string>] [--img-dir=<string>] [--mip-dir=<string>] [--output-name=<string>] [--data-dir=<string>] [--frame-rate=<int>] [--filter-window=<int>] [--gamma=<float>] [--channel=<int>] [--data-set=<string>] [--pixel-size=<int>] [--keep-imgs] [--rolling-ball-size=<int>]
+  preprocess.py PROCESSOR INPUT [--output-dir=<string>] [--img-dir=<string>] [--crop-dir=<string>] [--output-name=<string>] [--data-dir=<string>] [--frame-rate=<int>] [--filter-window=<int>] [--gamma=<float>] [--channel=<int>] [--data-set=<string>] [--pixel-size=<int>] [--keep-imgs] [--rolling-ball-size=<int>]
 
 Arguments:
   PROCESSOR The kind of image processor to use (eg, imaris or matlab)
@@ -15,7 +15,7 @@ Options:
   --output-dir=<string>  [default: input] The subdirectory to save the resulting CSV file
   --output-name=<string>  [default: data.csv] The name of the resulting CSV file
   --img-dir=<string>  [defaults: INPUT/images/(data_set)] The path to TIFF files
-  --mip-dir=<string>  [defaults: INPUT/images/(data_set)/mip] The path to MIP files
+  --crop-dir=<string>  [defaults: INPUT/images/(data_set)/crops] The path to crops
   --data-dir=<string>  Where to find the raw data. Typically determined by the preprocessor you've selected.
   --filter-window=<int>  [default: 8] The window size used for the median pass filter, in px
   --gamma=<float>  [default: 0.50] The gamma correction to use
@@ -55,7 +55,7 @@ schema = Schema({
   '--output-dir': len,
   '--output-name': len,
   '--img-dir': Or(None, len),
-  '--mip-dir': Or(None, len),
+  '--crop-dir': Or(None, len),
   '--data-dir': Or(None, len),
   '--filter-window': And(Use(int), lambda n: n > 0, error='--filter-window must be > 0'),
   '--gamma': And(Use(float), lambda n: n > 0, error='--gamma must be > 0'),
@@ -85,7 +85,7 @@ data_set = arguments['--data-set'] if arguments['--data-set'] else (input_path).
 frame_rate = arguments['--frame-rate']
 
 tiff_path = (input_path / (arguments['--img-dir'])).resolve() if arguments['--img-dir'] else (input_path / ("images/" + data_set))
-mip_path = (input_path / (arguments['--mip-dir'])).resolve() if arguments['--mip-dir'] else (tiff_path / "mip")
+crop_path = (input_path / (arguments['--crop-dir'])).resolve() if arguments['--crop-dir'] else (tiff_path / "crops")
 
 filter_window = arguments['--filter-window']
 gamma = arguments['--gamma']
@@ -101,7 +101,7 @@ params = {
   'data_set': data_set,
   'input_path': input_path,
   'tiff_path': tiff_path,
-  'mip_path': mip_path,
+  'crop_path': crop_path,
   'frame_rate': frame_rate,
   'filter_window': filter_window,
   'gamma': gamma,

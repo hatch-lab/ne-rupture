@@ -73,7 +73,7 @@ def crop_frame(frame, x, y, width, height, is_color=False):
 
   left = x-x_radius + (width-2*x_radius) # To account for rounding errors
   right = x+x_radius
-  top = y-y_radius + (width-2*y_radius)
+  top = y-y_radius + (height-2*y_radius)
   bottom = y+y_radius
   frame = frame[top:bottom, left:right]
 

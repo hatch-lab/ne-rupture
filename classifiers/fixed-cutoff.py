@@ -8,12 +8,15 @@ ROOT_PATH = Path(__file__ + "/../..").resolve()
 
 sys.path.append(str(ROOT_PATH))
 
+
 import math
 import numpy as np
 import pandas as pd
 import json
 from multiprocessing import Pool, cpu_count
 from time import sleep
+
+from validate.lib import get_cell_stats
 
 NEED_TIFFS = False
 SAVES_INTERMEDIATES = False
@@ -69,8 +72,10 @@ def seed_events(data, conf):
   data.sort_values([ 'data_set', 'particle_id', 'frame' ], inplace=True)
   data.reset_index(inplace=True, drop=True)
 
-  r_idx = ((data['median_derivative'] <= conf['median_derivative_cutoff']) & (data['stationary_median'] <= conf['median_cutoff']))
-  data.loc[r_idx, 'event'] = 'R'
+  r_idx_1 = ((data['median_derivative'] <= conf['median_derivative_cutoff']) & (data['stationary_median'] <= conf['median_cutoff']))
+  r_idx_2 = ((data['max_flow_mag'] >= conf['max_flow_mag']) & (data['max_flow_ang'] <= conf['max_flow_ang']))
+  data.loc[((r_idx_1) | (r_idx_2)), 'event'] = 'R'
+  # data.loc[(r_idx_1), 'event'] = 'R'
 
   return data
 
@@ -292,7 +297,7 @@ def apply_parallel(grouped, message,  fn, *args):
 
 #   return n_data
 
-def run(data, conf=False, fast=False):
+def run(data, tiff_path=None, conf=False, fast=False):
   if not conf:
     with CONF_PATH.open(mode='r') as file:
       conf = json.load(file)
@@ -313,7 +318,7 @@ def run(data, conf=False, fast=False):
   if not fast:
     data = apply_parallel(data.groupby([ 'data_set', 'particle_id' ]), "Classifying particles", process_event_seeds, conf)
 
-  return data
+  return ( True, data )
 
 def get_event_summary(data, conf=False):
   """

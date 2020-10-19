@@ -22,14 +22,14 @@ import os
 from pathlib import Path
 from importlib import import_module
 
-ROOT_PATH = Path(__file__ + "/../..").resolve()
-
+ROOT_PATH = Path(__file__ + "/..").resolve()
 sys.path.append(str(ROOT_PATH))
+
 
 from common.docopt import docopt
 from common.version import get_version
 from common.output import colorize
-from lib import get_cell_stats,get_summary_table
+from validate.lib import get_cell_stats,get_summary_table
 
 from collections import deque
 import numpy as np
@@ -100,7 +100,7 @@ def run_model(classifier, conf, data):
   """
   
   """
-  classified_data = classifier.run(data, conf, True)
+  classified_data = classifier.run(data, tiff_path=None, conf=conf, fast=True)[1]
 
   # Get summary data
   results = apply_parallel(classified_data.groupby([ 'data_set', 'particle_id' ]), get_cell_stats, False)
