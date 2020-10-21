@@ -16,8 +16,6 @@ import common.video as hatchvid
 
 import numpy as np
 import pandas as pd
-import glob
-from time import time
 
 import cv2
 
@@ -26,7 +24,7 @@ from skimage.color import label2rgb
 from skimage import measure, exposure, morphology, segmentation, transform
 from scipy import ndimage as ndi
 
-from skimage.feature import register_translation
+from joblib import Parallel, delayed
 
 from aicspkg.aicssegmentation.core.pre_processing_utils import intensity_normalization
 from aicspkg.aicssegmentation.core.pre_processing_utils import image_smoothing_gaussian_3d
@@ -38,7 +36,7 @@ from yaspin import yaspin
 from yaspin.spinners import Spinners
 
 from feature_extraction import tracks
-from lib import base_transform
+from lib import base_transform, make_stationary, fit_spline
 
 NAME      = "aics"
 
@@ -53,6 +51,74 @@ def get_default_data_path(input_path):
     str The path to raw data
   """
   return input_path / "images/raw"
+
+def get_masks(img, pixel_size):
+  # Pre-processing
+  sys.stdout = open(os.devnull, 'w') # Suppress print
+  i_norm = intensity_normalization(img, [ 10.0, 5.0 ])
+  i_smooth = image_smoothing_gaussian_3d(i_norm, sigma=1)
+  sys.stdout = sys.__stdout__
+
+  # Expand image to 3D
+  i_smooth = np.repeat(i_smooth[np.newaxis, :, :], 3, axis=0)
+
+  # Masked object thresholding
+  pre_seg_1, mo_mask = MO(i_smooth, 'ave', 100, extra_criteria=True, return_object=True)
+
+  # S2 filter for detecting extra spots
+  extra_spots = dot_2d_slice_by_slice_wrapper(i_smooth, [[ 2, 0.025 ]])
+  pre_seg_2 = np.logical_or(pre_seg_1, extra_spots)
+
+  # S2 filter for detecting dark spots
+  dark_spots = dot_2d_slice_by_slice_wrapper(1-i_smooth, [[ 2, 0.025], [1, 0.025]])
+  pre_seg_2[dark_spots > 0] = 0
+
+  # Size filtering
+  seg = morphology.remove_small_objects(pre_seg_2>0, min_size=400, connectivity=1, in_place=False)
+
+  # Return to 2D
+  seg = seg[1, :, :]
+  i_smooth = i_smooth[1,:,:]
+  i_norm_8bit = exposure.rescale_intensity(i_norm, out_range=( 0, 255 )).astype(np.uint8)
+  i_smooth_8bit = exposure.rescale_intensity(i_smooth, out_range=( 0, 255 )).astype(np.uint8)
+
+  # Label regions
+  masks = measure.label(seg)
+
+  # Read props
+  props = measure.regionprops(masks, intensity_image=i_norm_8bit)
+
+  # Perform a flood fill on all segments
+  st_dev = np.std(i_smooth_8bit)
+  max_flood_size = (pixel_size**2)*10000 if pixel_size is not None else 10000
+  floods = Parallel(n_jobs=2)(delayed(flood_region)(region, i_norm_8bit, i_smooth_8bit, st_dev, max_flood_size, pixel_size) for region in props)
+
+  for label,new_mask in floods:
+    # Update masks
+    if new_mask is not None:
+      masks[( (new_mask == 1) | (masks == label) )] = label
+
+  return ( masks, i_norm_8bit, i_smooth_8bit)
+
+def flood_region(region, i_norm_8bit, i_smooth_8bit, st_dev, max_flood_size, pixel_size):
+  centroid = np.round(region.centroid).astype(np.uint32)
+  new_mask = segmentation.flood(i_smooth_8bit, ( centroid[0], centroid[1] ), tolerance=st_dev/2)
+  new_mask = ndi.morphology.binary_fill_holes(new_mask)
+  new_mask = morphology.binary_closing(new_mask,selem=morphology.disk(4))
+  
+  # Sanity check the size of our flood
+  new_mask = measure.label(new_mask)
+  new_props = measure.regionprops(new_mask, intensity_image=i_norm_8bit)
+  if len(new_props) <= 0:
+    return ( region.label, None )
+  new_region = new_props[0]
+  region_size = new_region.area*(pixel_size**2) if pixel_size is not None else new_region.area
+  if region_size > max_flood_size:
+    # If our flood is bigger than a 10000 um^2
+    return ( region.label, None )
+
+  return ( region.label, new_mask )
+
 
 def process_data(data_path, params):
   """
@@ -73,6 +139,7 @@ def process_data(data_path, params):
   tiff_path = params['tiff_path']
   crop_path = params['crop_path']
   keep_imgs = params['keep_imgs']
+  frame_rate = params['frame_rate']
 
   tiff_path.mkdir(mode=0o755, parents=True, exist_ok=True)
   crop_path.mkdir(mode=0o755, parents=True, exist_ok=True)
@@ -143,67 +210,11 @@ def process_data(data_path, params):
             # channel is 1-indexed, python is 0-indexed
             img = img[:,:, (channel-1)]
 
-          # Pre-processing
-          sys.stdout = open(os.devnull, 'w') # Suppress print
-          i_norm = intensity_normalization(img, [ 10.0, 5.0 ])
-          i_smooth = image_smoothing_gaussian_3d(i_norm, sigma=1)
-          sys.stdout = sys.__stdout__
-
           # Store frame size for later
           if frame_shape is None:
             frame_shape = img.shape
 
-          # Expand image to 3D
-          i_smooth = np.repeat(i_smooth[np.newaxis, :, :], 3, axis=0)
-
-          # Masked object thresholding
-          pre_seg_1, mo_mask = MO(i_smooth, 'ave', 100, extra_criteria=True, return_object=True)
-
-          # S2 filter for detecting extra spots
-          extra_spots = dot_2d_slice_by_slice_wrapper(i_smooth, [[ 2, 0.025 ]])
-          pre_seg_2 = np.logical_or(pre_seg_1, extra_spots)
-
-          # S2 filter for detecting dark spots
-          dark_spots = dot_2d_slice_by_slice_wrapper(1-i_smooth, [[ 2, 0.025], [1, 0.025]])
-          pre_seg_2[dark_spots > 0] = 0
-
-          # Size filtering
-          seg = morphology.remove_small_objects(pre_seg_2>0, min_size=400, connectivity=1, in_place=False)
-
-          # Return to 2D
-          seg = seg[1, :, :]
-          i_smooth = i_smooth[1,:,:]
-          i_norm_8bit = exposure.rescale_intensity(i_norm, out_range=( 0, 255 )).astype(np.uint8)
-          i_smooth_8bit = exposure.rescale_intensity(i_smooth, out_range=( 0, 255 )).astype(np.uint8)
-
-          # Label regions
-          masks = measure.label(seg)
-          # Read props
-          props = measure.regionprops(masks, intensity_image=i_norm_8bit)
-
-          # Perform a flood fill on all segments
-          st_dev = np.std(i_smooth_8bit)
-          for region in props:
-
-            centroid = np.round(region.centroid).astype(np.uint32)
-            new_mask = segmentation.flood(i_smooth_8bit, ( centroid[0], centroid[1] ), tolerance=st_dev/2)
-            new_mask = ndi.morphology.binary_fill_holes(new_mask)
-            new_mask = morphology.binary_closing(new_mask,selem=morphology.disk(4))
-            
-            # Sanity check the size of our flood
-            new_mask = measure.label(new_mask)
-            new_props = measure.regionprops(new_mask, intensity_image=i_norm_8bit)
-            if len(new_props) <= 0:
-              continue
-            new_region = new_props[0]
-            max_flood_size = (pixel_size**2)*10000 if pixel_size is not None else 10000
-            region_size = new_region.area*(pixel_size**2) if pixel_size is not None else new_region.area
-            if region_size > max_flood_size:
-              # If our flood is bigger than a 10000 um^2
-              continue
-
-            # Update masks
-            masks[( (new_mask == 1) | (masks == region.label) )] = region.label
+          masks, i_norm_8bit, i_smooth_8bit = get_masks(img, pixel_size)
 
           all_masks.append(masks.copy())
 
@@ -267,7 +278,7 @@ def process_data(data_path, params):
   
   data['min_frame'] = data['frame']
   for i in tqdm(frames[:-1], ncols=90, unit="frames"):
-    data = tracks.make_tracks(data, i, 10, 3)
+    data = tracks.make_tracks(data, i, 10, 540, frame_rate)
   data.drop_duplicates(subset=[ 'particle_id', 'frame' ], inplace=True)
   data.drop('min_frame', axis='columns', inplace=True)
 
@@ -418,18 +429,15 @@ def process_data(data_path, params):
     shutil.rmtree(crop_path)
   crop_path.mkdir(mode=0o755, parents=True, exist_ok=True)
 
-  last_pids = []
-  flow_data = {
+  cyto_data = {
     'particle_id': [],
     'frame': [],
-    'max_flow_mag': [],
-    'min_flow_mag': [],
-    'std_flow_mag': [],
-    'max_flow_ang': [],
-    'min_flow_ang': [],
-    'std_flow_ang': []
+    'cyto_mean': [],
+    'cyto_median': [],
+    'cyto_max': [],
+    'cyto_min': [],
+    'cyto_std': []
   }
-  last_img = None
   img = None
   for i in tqdm(frames, ncols=90, unit="frames"):
     masks = all_masks[(i-1),:,:].copy()
@@ -459,58 +467,54 @@ def process_data(data_path, params):
       fg = hatchvid.crop_frame(fg, x, y, 150, 150)
       cv2.imwrite(str(crop_path / (pid + "-" + str(i) + ".tif")), fg)
 
-      # Calculate optical flow
-      if last_img is not None and pid in last_pids:
-        # First, get the unmasked image
-        this_crop = hatchvid.crop_frame(img, x, y, 150, 150)
-        last_crop = hatchvid.crop_frame(last_img, x, y, 150, 150)
+      # Calculate cytoplasmic intensity
+    
+      # First, get the unmasked image
+      this_crop = hatchvid.crop_frame(img, x, y, 150, 150)
 
-        # Mask off this_crop, last_crop
-        mask = fg.copy()
-        mask[mask != 0] = 1
+      # Get a mask of the nucleus
+      mask = fg.copy()
+      mask[mask != 0] = 1
 
-        # Widen out the mask/fill holes
-        mask = morphology.binary_dilation(mask, morphology.disk(3)).astype(np.uint8)
+      # Widen out the mask/fill holes
+      mask = morphology.binary_dilation(mask, morphology.disk(3)).astype(np.uint8)
 
-        # Make a ring
-        enlarged_mask = morphology.binary_dilation(mask, morphology.disk(5)).astype(np.uint8)
-        enlarged_mask[mask == 1] = 0
+      # Make a ring
+      enlarged_mask = morphology.binary_dilation(mask, morphology.disk(5)).astype(np.uint8)
+      enlarged_mask[mask == 1] = 0
 
-        this_mask = this_crop.copy()
-        last_mask = last_crop.copy()
-        
-        this_mask *= enlarged_mask
-        last_mask *= enlarged_mask
+      # Generate a masked array
+      masked_img = np.ma.masked_array(this_crop, mask=np.invert(enlarged_mask.astype(bool)))
 
-        # Calc the optical flow between the masked versions
-        flow = cv2.calcOpticalFlowFarneback(last_mask,this_mask, None, 0.5, 3, 15, 3, 7, 1.5, 0)
-
-        flow_data['particle_id'].append(pid)
-        flow_data['frame'].append(i)
-        flow_data['max_flow_mag'].append(np.max(flow[...,0]))
-        flow_data['min_flow_mag'].append(np.min(flow[...,0]))
-        flow_data['std_flow_mag'].append(np.std(flow[...,0]))
-        flow_data['max_flow_ang'].append(np.max(flow[...,1]))
-        flow_data['min_flow_ang'].append(np.min(flow[...,1]))
-        flow_data['std_flow_ang'].append(np.std(flow[...,1]))
-
-    # Save last_crop
-    last_img = img.copy()
-
-    last_pids = pids
+      cyto_data['particle_id'].append(pid)
+      cyto_data['frame'].append(i)
+      cyto_data['cyto_mean'].append(np.ma.mean(masked_img))
+      cyto_data['cyto_median'].append(np.ma.median(masked_img))
+      cyto_data['cyto_max'].append(np.ma.max(masked_img))
+      cyto_data['cyto_min'].append(np.ma.min(masked_img))
+      cyto_data['cyto_std'].append(np.ma.std(masked_img)) 
   
-  flow_data = pd.DataFrame(flow_data)
-  flow_data = flow_data.astype({
+  cyto_data = pd.DataFrame(cyto_data)
+  cyto_data = cyto_data.astype({
     'particle_id': 'str',
     'frame': 'int',
-    'max_flow_mag': 'float',
-    'min_flow_mag': 'float',
-    'std_flow_mag': 'float',
-    'max_flow_ang': 'float',
-    'min_flow_ang': 'float',
-    'std_flow_ang': 'float'
+    'cyto_mean': 'float',
+    'cyto_median': 'float',
+    'cyto_max': 'float',
+    'cyto_min': 'float',
+    'cyto_std': 'float'
   })
-  data = pd.merge(data, flow_data, on=['particle_id', 'frame'], how='left', left_index=True)
+  data = pd.merge(data, cyto_data, on=['particle_id', 'frame'], how='left', left_index=True)
+
+  # Sort data
+  data = data.sort_values(by=[ 'data_set', 'particle_id', 'time' ])
+
+  data = data.groupby([ 'data_set', 'particle_id' ]).apply(make_stationary, 'cyto_mean', 'stationary_cyto_mean')
+  data = data.groupby([ 'data_set', 'particle_id' ]).apply(make_stationary, 'cyto_median', 'stationary_cyto_median')
+
+  data = data.groupby(['data_set', 'particle_id' ], as_index=False).apply(fit_spline, 'stationary_cyto_median', 'cyto_median')
+  data = data.groupby([ 'data_set','particle_id' ], as_index=False).apply(fit_spline, 'stationary_cyto_mean', 'cyto_mean')
+
   return data
 
 def id_track(group):
