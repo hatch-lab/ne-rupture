@@ -62,6 +62,7 @@ def base_transform(data, params):
   data = scale(data, 'normalized_median', 'normalized_median')
   data = scale(data, 'normalized_sum', 'normalized_sum')
 
+
   # Scale area of each particle to be between 0 and 1 (relative to itself)
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(scale, 'area', 'scaled_area')
 
@@ -70,12 +71,13 @@ def base_transform(data, params):
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(make_stationary, 'normalized_median', 'stationary_median')
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(make_stationary, 'normalized_sum', 'stationary_sum')
 
+
   # Interpolate with cubic splines/find derivatives
-  data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'scaled_area', 'area')
-  data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'normalized_median', 'median')
-  data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'normalized_sum', 'sum')
-  data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'x', 'x')
-  data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'y', 'y')
+  data = data.groupby([ 'data_set', 'particle_id' ], sort=False).apply(fit_spline, 'scaled_area', 'area')
+  data = data.groupby([ 'data_set', 'particle_id' ], sort=False).apply(fit_spline, 'normalized_median', 'median')
+  data = data.groupby([ 'data_set', 'particle_id' ], sort=False).apply(fit_spline, 'normalized_sum', 'sum')
+  data = data.groupby([ 'data_set', 'particle_id' ], sort=False).apply(fit_spline, 'x', 'x')
+  data = data.groupby([ 'data_set', 'particle_id' ], sort=False).apply(fit_spline, 'y', 'y')
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(find_speed)
 
   # Find nearest neighbors
@@ -179,7 +181,14 @@ def fit_spline(group, fit_column, new_column_stem):
   Returns:
     Modified Pandas DataFrame
   """
-  fit = interpolate.splrep(group['time'], group[fit_column])
+
+  # If any of the fit_column values are NaN, the spline fit will be all NaN
+  # We deal with this by replacing NaNs with 0, but setting the weights on
+  # those values to 0
+  spline_group = group.copy()
+  w = pd.isna(spline_group[fit_column])
+  spline_group.loc[(w), fit_column] = 0
+  fit = interpolate.splrep(spline_group['time'], spline_group[fit_column], w=~w)
 
   spline_column = new_column_stem + '_spline'
   deriv_column = new_column_stem + '_derivative'

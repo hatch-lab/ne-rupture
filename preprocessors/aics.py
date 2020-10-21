@@ -512,8 +512,8 @@ def process_data(data_path, params):
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(make_stationary, 'cyto_mean', 'stationary_cyto_mean')
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(make_stationary, 'cyto_median', 'stationary_cyto_median')
 
-  data = data.groupby(['data_set', 'particle_id' ], as_index=False).apply(fit_spline, 'stationary_cyto_median', 'cyto_median')
-  data = data.groupby([ 'data_set','particle_id' ], as_index=False).apply(fit_spline, 'stationary_cyto_mean', 'cyto_mean')
+  data = data.groupby(['data_set', 'particle_id' ], sort=False).apply(fit_spline, 'stationary_cyto_median', 'cyto_median')
+  data = data.groupby([ 'data_set','particle_id' ], sort=False).apply(fit_spline, 'stationary_cyto_mean', 'cyto_mean')
 
   return data
 

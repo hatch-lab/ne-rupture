@@ -14,8 +14,30 @@ import numpy as np
 import pandas as pd
 from scipy import spatial
 
-def make_tracks(data, frame_num, max_distance=50, gap_size=7):
+def make_tracks(data, frame_num, max_distance=50, gap_size=1260, frame_rate=180):
+  """
+  Combine individual particles into tracks
+
+  Will take all the particles in a given reference frame, frame_num, and look forward in 
+  time by at most gap_size seconds. Any particle within max_distance / frame will be 
+  treated as the same particle.
+
+  max_distance / frame means: if we will look up to, eg, 7 frames into the future,
+  the max_distance the particle could have travelled will be 7*max_distances
+
+  Arguments:
+    data pd.DataFrame The data frame containing all frames
+    frame_num int The reference frame
+    max_distance int The maximum distance / frame the particle could have moved (in um)
+    gap_size int The maximum gap in time between when the particle was last seen and reappeared, in seconds
+    frame_rate int The number of seconds between each frame
+
+  Returns
+    pd.DataFrame The updated DataFrame where particle_ids have been merged
+  """
   cols = data.columns.tolist()
+
+  gap_size = int(gap_size/frame_rate)
 
   id_map = build_neighbor_map(data, frame_num, max_distance, gap_size)
   if id_map is None:
