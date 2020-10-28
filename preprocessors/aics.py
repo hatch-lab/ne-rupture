@@ -36,7 +36,7 @@ from yaspin import yaspin
 from yaspin.spinners import Spinners
 
 from feature_extraction import tracks
-from lib import base_transform, make_stationary, fit_spline
+from lib import base_transform, make_stationary, fit_spline, normalize_intensity
 
 NAME      = "aics"
 
@@ -509,11 +509,16 @@ def process_data(data_path, params):
   # Sort data
   data = data.sort_values(by=[ 'data_set', 'particle_id', 'time' ])
 
-  data = data.groupby([ 'data_set', 'particle_id' ]).apply(make_stationary, 'cyto_mean', 'stationary_cyto_mean')
-  data = data.groupby([ 'data_set', 'particle_id' ]).apply(make_stationary, 'cyto_median', 'stationary_cyto_median')
+  data = data.groupby([ 'frame' ], sort=False).apply(normalize_intensity, 'median', 'cyto_mean', 'normalized_cyto_mean')
+  data = data.groupby([ 'frame' ], sort=False).apply(normalize_intensity, 'median', 'cyto_median', 'normalized_cyto_median')
+  data = data.groupby([ 'data_set', 'particle_id' ], sort=False).apply(make_stationary, 'normalized_cyto_mean', 'stationary_cyto_mean')
+  data = data.groupby([ 'data_set', 'particle_id' ], sort=False).apply(make_stationary, 'normalized_cyto_median', 'stationary_cyto_median')
 
-  data = data.groupby(['data_set', 'particle_id' ], sort=False).apply(fit_spline, 'stationary_cyto_median', 'cyto_median')
-  data = data.groupby([ 'data_set','particle_id' ], sort=False).apply(fit_spline, 'stationary_cyto_mean', 'cyto_mean')
+  columns = [
+    ('stationary_cyto_median', 'cyto_median'), 
+    ('stationary_cyto_mean', 'cyto_mean')
+  ]
+  data = fit_splines(data, columns, params['input_path'] / 'tmp/')
 
   return data
 

@@ -73,11 +73,15 @@ def base_transform(data, params):
 
 
   # Interpolate with cubic splines/find derivatives
-  data = data.groupby([ 'data_set', 'particle_id' ], sort=False).apply(fit_spline, 'scaled_area', 'area')
-  data = data.groupby([ 'data_set', 'particle_id' ], sort=False).apply(fit_spline, 'normalized_median', 'median')
-  data = data.groupby([ 'data_set', 'particle_id' ], sort=False).apply(fit_spline, 'normalized_sum', 'sum')
-  data = data.groupby([ 'data_set', 'particle_id' ], sort=False).apply(fit_spline, 'x', 'x')
-  data = data.groupby([ 'data_set', 'particle_id' ], sort=False).apply(fit_spline, 'y', 'y')
+  columns = [
+    ('scaled_area', 'area'), 
+    ('stationary_median', 'median'),
+    ('stationary_sum', 'sum'),
+    ('x', 'x'),
+    ('y', 'y')
+  ]
+  data = fit_splines(data, columns, params['input_path'] / 'tmp/')
+
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(find_speed)
 
   # Find nearest neighbors
@@ -168,6 +172,45 @@ def make_stationary(group, col, new_col):
   group[new_col] = group[new_col] - np.mean(group[new_col])
 
   return group
+
+def fit_splines(data, column_params, tmp_path):
+  """
+  Calls R script to fit splines
+
+  R has a better, more accurate spline-fitting function that is written in 
+  Fortran, so I can't port it to Python.
+
+  Doing this as a work around.
+  """
+
+  column_params = list(zip(*column_params))
+  fit_columns = list(column_params[0])
+  column_stems = list(column_params[1])
+
+  # Write out data to tmp
+  tmp_path.mkdir(exist_ok=True)
+  tmp_file_path = tmp_path / 'spline.tmp.csv'
+
+  data.to_csv(str(tmp_file_path), header=True, encoding='utf-8', index=None)
+
+  r_spline_path = (ROOT_PATH / ("preprocessors/R/smooth-spline.R")).resolve()
+  cmd = [
+    "Rscript",
+    "--vanilla",
+    str(r_spline_path),
+    str(tmp_file_path),
+    ",".join(fit_columns),
+    ",".join(column_stems)
+  ]
+  # subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+  subprocess.call(cmd)
+
+  data = pd.read_csv(str(tmp_file_path), header=0, dtype={ 'particle_id': str })
+  tmp_file_path.unlink()
+
+  return data
+
+
 
 def fit_spline(group, fit_column, new_column_stem):
   """
