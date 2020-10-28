@@ -12,7 +12,7 @@ Arguments:
 Options:
   --input-path=<string> [defaults: validate/validation-data/input] The directory with the CSV file containing particle data with true events
   --input-name=<string> [defaults: data.csv] The name of the input CSV file
-  --img-dir=<string> [defaults: INPUT/../images] The directory that contains TIFF images of each frame, for outputting videos.
+  --img-dir=<string> [defaults: [input_path]/../images] The directory that contains TIFF images of each frame, for outputting videos.
   --classifier-conf=<string> [defaults: None] Will be passed along to the classifier.
   --skip-graphs=<bool> [defaults: False] If True, won't output graphs or videos
   --skip-filtered=<bool> [defaults: False] If True, won't include filtered data in summary stats
@@ -27,15 +27,15 @@ import os
 from pathlib import Path
 from importlib import import_module
 
-ROOT_PATH = Path(__file__ + "/../..").resolve()
-
+ROOT_PATH = Path(__file__ + "/..").resolve()
 sys.path.append(str(ROOT_PATH))
+
 
 from common.docopt import docopt
 from common.version import get_version
 from common.output import colorize
 
-from lib import get_cell_stats,get_summary_table
+from validate.lib import get_cell_stats,get_summary_table
 
 import numpy as np
 import pandas as pd
@@ -43,7 +43,7 @@ import subprocess
 import math
 import re
 from tabulate import tabulate
-from multiprocessing import Pool, cpu_count
+from tqdm import tqdm
 
 ### Constant for getting our base input dir
 QA_PATH  = (ROOT_PATH / ("validate/qa.py")).resolve()
@@ -83,10 +83,7 @@ print("Running classifier \033[1m" + classifier_name + "\033[0m...")
 
 data = pd.read_csv(str(data_file_path), header=0, dtype={ 'particle_id': str })
 
-if classifier.NEED_TIFFS:
-  classified_data = classifier.run(data, tiff_path, conf=classifier_conf)
-else:
-  classified_data = classifier.run(data, classifier_conf)
+finished, classified_data = classifier.run(data, tiff_path, conf=classifier_conf)
 
 def prettify_summary_table(summary):
   data_sets = []
@@ -136,35 +133,35 @@ def prettify_summary_table(summary):
 
   return pretty
 
-def apply_parallel(grouped, fn, *args):
-  """
-  Function for parallelizing particle classification
+# def apply_parallel(grouped, fn, *args):
+#   """
+#   Function for parallelizing particle classification
 
-  Will take each DataFrame produced by grouping by particle_id
-  and pass that data to the provided function, along with the 
-  supplied arguments.
+#   Will take each DataFrame produced by grouping by particle_id
+#   and pass that data to the provided function, along with the 
+#   supplied arguments.
 
-  Arguments:
-    grouped List of grouped particle data
-    fn function The function called with a group as a parameter
-    args Arguments to pass through to fn
+#   Arguments:
+#     grouped List of grouped particle data
+#     fn function The function called with a group as a parameter
+#     args Arguments to pass through to fn
 
-  Returns:
-    Pandas DataFrame The re-assembled data.
-  """
-  with Pool(cpu_count()) as p:
-    groups = []
-    for name, group in grouped:
-      t = tuple([ group ]) + tuple(args)
-      groups.append(t)
-    chunk = p.starmap(fn, groups)
+#   Returns:
+#     Pandas DataFrame The re-assembled data.
+#   """
+#   with Pool(cpu_count()) as p:
+#     groups = []
+#     for name, group in grouped:
+#       t = tuple([ group ]) + tuple(args)
+#       groups.append(t)
+#     chunk = p.starmap(fn, groups)
 
-  return chunk
+#   return chunk
 
 if __name__ == '__main__':
   print("Scoring classifier \033[1m" + classifier_name + "\033[0m...")
-  results = apply_parallel(classified_data.groupby([ 'data_set', 'particle_id' ]), get_cell_stats, skip_filtered)
-  results = pd.concat(results)
+  tqdm.pandas(desc="Generating cell stats", ncols=90, unit="particle")
+  results = classified_data.groupby([ 'data_set', 'particle_id' ]).progress_apply(get_cell_stats, skip_filtered=skip_filtered)
 
   headers = [
     "",

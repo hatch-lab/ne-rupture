@@ -11,7 +11,7 @@ Arguments:
 
 Options:
   --test-data-folder=<string> [defaults: validate/validation-data/input] The directory with the CSV file containing particle data with true events
-  --steps=<int> [defaults: 60] The number of values to try for each hyper parameter
+  --steps=<int> [defaults: 3600] The number of values to try for each hyper parameter
   --skip-graphs=<bool> [defaults: False] If true, will not print AUC curves
 
 Output:
@@ -29,13 +29,13 @@ sys.path.append(str(ROOT_PATH))
 from common.docopt import docopt
 from common.version import get_version
 from common.output import colorize
+
 from validate.lib import get_cell_stats,get_summary_table
 
 from collections import deque
 import numpy as np
 import pandas as pd
 import json
-from multiprocessing import Pool, cpu_count
 import subprocess
 import re
 import time
@@ -71,31 +71,6 @@ classifier = import_module("classifiers." + classifier_name)
 
 data = pd.read_csv(str(data_file_path), header=0, dtype={ 'particle_id': str })
 
-def apply_parallel(grouped, fn, *args):
-  """
-  Function for parallelizing particle classification
-
-  Will take each DataFrame produced by grouping by particle_id
-  and pass that data to the provided function, along with the 
-  supplied arguments.
-
-  Arguments:
-    grouped List of grouped particle data
-    fn function The function called with a group as a parameter
-    args Arguments to pass through to fn
-
-  Returns:
-    Pandas DataFrame The re-assembled data.
-  """
-  with Pool(cpu_count()) as p:
-    groups = []
-    for name, group in grouped:
-      t = tuple([ group ]) + tuple(args)
-      groups.append(t)
-    chunk = p.starmap(fn, groups)
-
-  return chunk
-
 def run_model(classifier, conf, data):
   """
   
@@ -103,8 +78,7 @@ def run_model(classifier, conf, data):
   classified_data = classifier.run(data, tiff_path=None, conf=conf, fast=True)[1]
 
   # Get summary data
-  results = apply_parallel(classified_data.groupby([ 'data_set', 'particle_id' ]), get_cell_stats, False)
-  results = pd.concat(results)
+  results = classified_data.groupby([ 'data_set', 'particle_id' ]).apply(get_cell_stats, False)
   summary = []
   summary.append(get_summary_table(results, "All"))
   for data_set in results['data_set'].unique():
@@ -143,7 +117,7 @@ for param in params:
   max_value = np.max(hyper_conf[param])
   delta = (max_value-min_value)/divisor
   param_ranges.append(np.arange(min_value, max_value, delta))
-  params_string.append("{} = {:2.4f}")
+  params_string.append("{} = {:2.6f}")
 
 params_string = ", ".join(params_string)
 params_string = "\r Checking: " + params_string + " ({}/{}) Avg. time/run: {:2.2f} s"

@@ -12,13 +12,13 @@ import math
 import numpy as np
 import pandas as pd
 import json
-from multiprocessing import Pool, cpu_count
 from time import sleep
 from PIL import Image, ImageDraw, ImageFont
 import cv2
 from scipy import optimize
 import contextlib
 from skimage import exposure, util
+from tqdm import tqdm
 
 import common.video as hatchvid
 from validate.lib import get_cell_stats
@@ -510,56 +510,59 @@ def sliding_average(data, window, step, frame_rate):
 
   return result
 
-def print_progress_bar(message, total, num_left):
-  """
-  Prints a nice progress bar onto the terminal
+# def print_progress_bar(message, total, num_left):
+#   """
+#   Prints a nice progress bar onto the terminal
 
-  Arguments:
-    message string The message to print alongside the bar
-    total int The number of child processes to run
-    num_left int The number of child processes left to run
-  """
-  progress = int(30*(total-num_left)//total)
-  bar = "#" * progress + ' ' * (30 - progress)
-  print("\r{} |{}|".format(message, bar), end="\r")
+#   Arguments:
+#     message string The message to print alongside the bar
+#     total int The number of child processes to run
+#     num_left int The number of child processes left to run
+#   """
+#   if total == 0:
+#     progress = 30
+#   else:
+#     progress = int(30*(total-num_left)//total)
+#   bar = "#" * progress + ' ' * (30 - progress)
+#   print("\r{} |{}|".format(message, bar), end="\r")
 
-  if num_left == 0:
-    print()
+#   if num_left == 0:
+#     print()
 
-def apply_parallel(grouped, message,  fn, *args):
-  """
-  Function for parallelizing particle classification
+# def apply_parallel(grouped, message,  fn, *args):
+#   """
+#   Function for parallelizing particle classification
 
-  Will take each DataFrame produced by grouping by particle_id
-  and pass that data to the provided function, along with the 
-  supplied arguments.
+#   Will take each DataFrame produced by grouping by particle_id
+#   and pass that data to the provided function, along with the 
+#   supplied arguments.
 
-  Arguments:
-    grouped list List of grouped particle data
-    message string The message to print alongside the loading bars
-    fn function The function called with a group as a parameter
-    args Arguments to pass through to fn
+#   Arguments:
+#     grouped list List of grouped particle data
+#     message string The message to print alongside the loading bars
+#     fn function The function called with a group as a parameter
+#     args Arguments to pass through to fn
 
-  Returns:
-    Pandas DataFrame The re-assembled data.
-  """
+#   Returns:
+#     Pandas DataFrame The re-assembled data.
+#   """
 
-  total_groups = len(grouped)
+#   total_groups = len(grouped)
 
-  with Pool(cpu_count()) as p:
-    groups = []
-    for name, group in grouped:
-      t = tuple([ group ]) + tuple(args)
-      groups.append(t)
-    rs = p.starmap_async(fn, groups)
-    total = rs._number_left
+#   with Pool(cpu_count()) as p:
+#     groups = []
+#     for name, group in grouped:
+#       t = tuple([ group ]) + tuple(args)
+#       groups.append(t)
+#     rs = p.starmap_async(fn, groups)
+#     total = rs._number_left
 
-    while not rs.ready():
-      print_progress_bar(message, total, rs._number_left)
-      sleep(2)
+#     while not rs.ready():
+#       print_progress_bar(message, total, rs._number_left)
+#       sleep(2)
 
-  print_progress_bar(message, total, 0)
-  return pd.concat(rs.get(), sort=False)
+#   print_progress_bar(message, total, 0)
+#   return pd.concat(rs.get(), sort=False)
 
 def run(data, tiff_path, conf=False, fast=False):
   """
@@ -604,7 +607,9 @@ def run(data, tiff_path, conf=False, fast=False):
 
   if not fast and done:
     try:
-      data = apply_parallel(data.groupby([ 'data_set', 'particle_id' ]), "Classifying particles", process_event_seeds, conf)
+      tqdm.pandas(desc="Classifying particles", ncols=90, unit="particle")
+      data = data.groupby([ 'data_set', 'particle_id' ]).progress_apply(process_event_seeds, conf=conf)
+      # data = apply_parallel(data.groupby([ 'data_set', 'particle_id' ]), "Classifying particles", process_event_seeds, conf)
     except Exception as e:
       return ( False, data )
 
@@ -629,8 +634,14 @@ def get_event_summary(data, conf=False):
 
   # Filter out non-events
   cp = cp.loc[( cp['event'] != 'N' ), :]
+
+  if cp.shape[0] <= 0:
+    return get_event_info(cp)
+
+  tqdm.pandas(desc="Processing event summaries", ncols=90, unit="event")
+  events = cp.groupby([ 'data_set', 'particle_id', 'event_id' ]).progress_apply(get_event_info)
   
-  events = apply_parallel(cp.groupby([ 'data_set', 'particle_id', 'event_id' ]), "Processing event summaries", get_event_info)
+  # events = apply_parallel(cp.groupby([ 'data_set', 'particle_id', 'event_id' ]), "Processing event summaries", get_event_info)
   return events
 
 def get_baseline_median(p_data):
@@ -658,24 +669,31 @@ def get_event_info(e_data):
   Returns:
     pd.DataFrame A summary dataframe for this event
   """
-  event_types = e_data['event'].unique().tolist()
-  durations = []
-  normalized_durations = []
-  fractions_fp_lost = []
-  rupture_sizes = []
+  event_data = {
+    'data_set': [],
+    'particle_id': [],
+    'event': e_data['event'].unique().tolist(),
+    'duration': [],
+    'normalized_duration': [],
+    'fraction_fp_lost': [],
+    'rupture_size': []
+  }
+
+  if e_data.shape[0] <= 0:
+    return pd.DataFrame(event_data)
 
   min_stationary_intensity = np.min(e_data['stationary_median'])
   min_intensity = np.min(e_data['median'])
   baseline_intensity = e_data['raw_baseline_median'].unique()[0]
 
-  for event_type in event_types:
+  for event_type in event_data['event']:
     duration = e_data.loc[( e_data['event'] == event_type ), 'event_duration'].unique()[0]
-    durations.append(duration)
+    event_data['duration'].append(duration)
 
     normalized_duration = duration * abs(min_stationary_intensity)
-    normalized_durations.append(normalized_duration)
+    event_data['normalized_duration'].append(normalized_duration)
 
-    fractions_fp_lost.append(min_intensity/baseline_intensity)
+    event_data['fraction_fp_lost'].append(min_intensity/baseline_intensity)
 
     first_time = np.min(e_data['time'])
     first_velocity = e_data.loc[( e_data['time'] == first_time ), 'median_derivative'].unique()[0]
@@ -683,30 +701,22 @@ def get_event_info(e_data):
     # If this is a rupture, the rupture hole can be estimated by the 
     # following linear relationship:
     # area nm = -0.01249x-0.01079 where x is in  s^-1
-    rupture_sizes.append(-0.01249*first_velocity-0.01079)
+    event_data['rupture_size'].append(-0.01249*first_velocity-0.01079)
 
-  if len(durations) > 1:
-    duration_sum = np.sum(durations)
+  if len(event_data['duration']) > 1:
+    duration_sum = np.sum(event_data['duration'])
 
-    event_types.append("+".join(event_types))
-    durations.append(duration_sum)
-    normalized_durations.append(duration_sum * abs(min_stationary_intensity))
+    event_data['event'].append("+".join(event_data['event']))
+    event_data['duration'].append(duration_sum)
+    event_data['normalized_duration'].append(duration_sum * abs(min_stationary_intensity))
 
-    fractions_fp_lost.append(min_intensity/baseline_intensity)
-    rupture_sizes.append(-0.01249*first_velocity-0.01079)
+    event_data['fraction_fp_lost'].append(min_intensity/baseline_intensity)
+    event_data['rupture_size'].append(-0.01249*first_velocity-0.01079)
 
-  data_sets = [ e_data['data_set'].unique()[0] ]*len(event_types)
-  particle_ids = [ e_data['particle_id'].unique()[0] ]*len(event_types)
+  event_data['data_set'] = [ e_data['data_set'].unique()[0] ]*len(event_data['event'])
+  event_data['particle_id'] = [ e_data['particle_id'].unique()[0] ]*len(event_data['event'])
   
-  return pd.DataFrame({
-    'data_set': data_sets,
-    'particle_id': particle_ids,
-    'event': event_types,
-    'duration': durations,
-    'normalized_duration': normalized_durations,
-    'fraction_fp_lost': fractions_fp_lost,
-    'rupture_size': rupture_sizes
-  })
+  return pd.DataFrame(event_data)
 
 def get_cell_summary(data, conf=False):
   """

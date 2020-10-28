@@ -1,9 +1,7 @@
 {
-  "median_cutoff": -0.0933,
-  "median_derivative_cutoff": -0.0002,
+  "stationary_median": -0.0750,
 
-  "max_flow_mag": 0.9667,
-  "max_flow_ang": -1.0,
+  "stationary_cyto_median": 0.0348,
 
   "baseline_median_scale_factor": 0.92,
 

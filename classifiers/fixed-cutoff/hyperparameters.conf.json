@@ -1,6 +1,4 @@
 {
-  "median_cutoff": [ -0.2, 0.0 ],
-  "median_derivative_cutoff": [ -0.005, 0.005 ],
-  "max_flow_mag": [ -1.0, 1.0 ],
-  "max_flow_ang": [ -1.0, 1.0 ]
+  "stationary_median": [ -0.3, 0.15 ],
+  "stationary_cyto_median": [ -0.036, 0.2 ]
 }

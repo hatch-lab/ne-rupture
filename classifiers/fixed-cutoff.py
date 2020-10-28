@@ -16,6 +16,8 @@ import json
 from multiprocessing import Pool, cpu_count
 from time import sleep
 
+from tqdm import tqdm
+
 from validate.lib import get_cell_stats
 
 NEED_TIFFS = False
@@ -72,10 +74,8 @@ def seed_events(data, conf):
   data.sort_values([ 'data_set', 'particle_id', 'frame' ], inplace=True)
   data.reset_index(inplace=True, drop=True)
 
-  r_idx_1 = ((data['median_derivative'] <= conf['median_derivative_cutoff']) & (data['stationary_median'] <= conf['median_cutoff']))
-  r_idx_2 = ((data['max_flow_mag'] >= conf['max_flow_mag']) & (data['max_flow_ang'] <= conf['max_flow_ang']))
-  data.loc[((r_idx_1) | (r_idx_2)), 'event'] = 'R'
-  # data.loc[(r_idx_1), 'event'] = 'R'
+  r_idx_1 = ((data['stationary_median'] <= conf['stationary_median']) & (data['stationary_cyto_median'] >= conf['stationary_cyto_median']))
+  data.loc[(r_idx_1), 'event'] = 'R'
 
   return data
 
@@ -236,56 +236,56 @@ def sliding_average(data, window, step, frame_rate):
 
   return result
 
-def print_progress_bar(message, total, num_left):
-  """
-  Prints a nice progress bar onto the terminal
+# def print_progress_bar(message, total, num_left):
+#   """
+#   Prints a nice progress bar onto the terminal
 
-  Arguments:
-    message string The message to print alongside the bar
-    total int The number of child processes to run
-    num_left int The number of child processes left to run
-  """
-  progress = int(30*(total-num_left)//total)
-  bar = "#" * progress + ' ' * (30 - progress)
-  print("\r{} |{}|".format(message, bar), end="\r")
+#   Arguments:
+#     message string The message to print alongside the bar
+#     total int The number of child processes to run
+#     num_left int The number of child processes left to run
+#   """
+#   progress = int(30*(total-num_left)//total)
+#   bar = "#" * progress + ' ' * (30 - progress)
+#   print("\r{} |{}|".format(message, bar), end="\r")
 
-  if num_left == 0:
-    print()
+#   if num_left == 0:
+#     print()
 
-def apply_parallel(grouped, message,  fn, *args):
-  """
-  Function for parallelizing particle classification
+# def apply_parallel(grouped, message,  fn, *args):
+#   """
+#   Function for parallelizing particle classification
 
-  Will take each DataFrame produced by grouping by particle_id
-  and pass that data to the provided function, along with the 
-  supplied arguments.
+#   Will take each DataFrame produced by grouping by particle_id
+#   and pass that data to the provided function, along with the 
+#   supplied arguments.
 
-  Arguments:
-    grouped list List of grouped particle data
-    message string The message to print alongside the loading bars
-    fn function The function called with a group as a parameter
-    args Arguments to pass through to fn
+#   Arguments:
+#     grouped list List of grouped particle data
+#     message string The message to print alongside the loading bars
+#     fn function The function called with a group as a parameter
+#     args Arguments to pass through to fn
 
-  Returns:
-    Pandas DataFrame The re-assembled data.
-  """
+#   Returns:
+#     Pandas DataFrame The re-assembled data.
+#   """
 
-  total_groups = len(grouped)
+#   total_groups = len(grouped)
 
-  with Pool(cpu_count()) as p:
-    groups = []
-    for name, group in grouped:
-      t = tuple([ group ]) + tuple(args)
-      groups.append(t)
-    rs = p.starmap_async(fn, groups)
-    total = rs._number_left
+#   with Pool(cpu_count()) as p:
+#     groups = []
+#     for name, group in grouped:
+#       t = tuple([ group ]) + tuple(args)
+#       groups.append(t)
+#     rs = p.starmap_async(fn, groups)
+#     total = rs._number_left
 
-    while not rs.ready():
-      print_progress_bar(message, total, rs._number_left)
-      sleep(2)
+#     while not rs.ready():
+#       print_progress_bar(message, total, rs._number_left)
+#       sleep(2)
 
-  print_progress_bar(message, total, 0)
-  return pd.concat(rs.get(), sort=False)
+#   print_progress_bar(message, total, 0)
+#   return pd.concat(rs.get(), sort=False)
 
 # def find_neighbor_births(n_data, data):
 #   data_set = n_data['data_set'].values[0]
@@ -316,7 +316,9 @@ def run(data, tiff_path=None, conf=False, fast=False):
   # p_data = seed_mitoses(p_data, conf) # Just skip for now
 
   if not fast:
-    data = apply_parallel(data.groupby([ 'data_set', 'particle_id' ]), "Classifying particles", process_event_seeds, conf)
+    tqdm.pandas(desc="Classifying particles", ncols=90, unit="particle")
+    data = data.groupby([ 'data_set', 'particle_id' ]).progress_apply(process_event_seeds, conf=conf)
+    # data = apply_parallel(data.groupby([ 'data_set', 'particle_id' ]), "Classifying particles", process_event_seeds, conf)
 
   return ( True, data )
 
