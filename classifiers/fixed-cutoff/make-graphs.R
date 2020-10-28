@@ -211,7 +211,7 @@ for(m in 1:length(data_sets)) {
     median_plot <- base_plot +
       geom_line(aes(x=time, y=stationary_median)) +
       ggtitle(paste0(data_set, ":", pid)) +
-      scale_y_continuous(name="Median", limits=c(-median_limit, median_limit)) +
+      scale_y_continuous(name="Nuclear mean intensity", limits=c(-median_limit, median_limit)) +
       scale_x_continuous(name="", labels=format_time_labels(), sec.axis = sec_axis(~./frame_rate, name="Frame", labels=format_frame_labels())) +
       annotate(geom="segment", x=-Inf, xend=Inf, y=median_annotation, yend=median_annotation, color="red", alpha=0.7) +
       annotate(geom="segment", x=-Inf, xend=Inf, y=baseline_median, yend=baseline_median, linetype="dashed", alpha=0.7)
@@ -221,22 +221,21 @@ for(m in 1:length(data_sets)) {
         annotate(geom="text", x=0.1, y=-0.05, label="True", alpha=0.8, hjust=0)
     }
 
-    #area_cutoff <- classifier_conf[['area_cutoff']]
-    #baseline_area <- mean(df$stationary_area[which(df$event == "N")], na.rm=T)
-    #area_annotation <- area_cutoff
-    area_limit <- max(c(
-      abs(min(c(df$median_derivative*1.5), na.rm=T)), 
-      abs(max(c(df$median_derivative*1.5), na.rm=T))
+    cutoff <- classifier_conf[['stationary_cyto_median']]
+    baseline <- mean(df$stationary_cyto_median[which(df$event == "N")], na.rm=T)
+    annotation <- cutoff
+    limit <- max(c(
+      abs(min(c(df$stationary_cyto_median*1.5, annotation*1.5), na.rm=T)), 
+      abs(max(c(df$stationary_cyto_median*1.5, annotation*1.5), na.rm=T))
     ), na.rm=T)
+    cyto_plot <- base_plot +
+      geom_line(aes(x=time, y=stationary_cyto_median)) +
+      scale_y_continuous(name="Cytoplasmic median intensity", limits=c(-limit, limit)) +
+      scale_x_continuous(name="", labels=format_time_labels(), sec.axis = sec_axis(~./frame_rate, name="", labels=format_frame_labels())) +
+      annotate(geom="segment", x=-Inf, xend=Inf, y=annotation, yend=annotation, color="red", alpha=0.7) +
+      annotate(geom="segment", x=-Inf, xend=Inf, y=baseline, yend=baseline, linetype="dashed", alpha=0.7)
     
-    area_plot <- base_plot +
-      geom_line(aes(x=time, y=median_derivative)) +
-      #annotate(geom="segment", x=-Inf, xend=Inf, y=area_annotation, yend=area_annotation, color="red", alpha=0.7) +
-      #annotate(geom="segment", x=-Inf, xend=Inf, y=baseline_area, yend=baseline_area, linetype="dashed", alpha=0.7) +
-      scale_y_continuous(name="Median velocity", limits=c(-area_limit, area_limit)) +
-      scale_x_continuous(name="", labels=format_time_labels(), sec.axis = sec_axis(~./frame_rate, name="", labels=format_frame_labels()))
-    
-    plots[[(length(plots)+1)]] <- plot_grid(median_plot, area_plot, nrow=2, align="v", rel_heights=c(1.4,1.8))
+    plots[[(length(plots)+1)]] <- plot_grid(median_plot, cyto_plot, nrow=2, align="v", rel_heights=c(1.8,1.4))
 
     # Plots to put under movies
     movie_plot <- ggplot(df, aes(x=frame, y=stationary_median))
