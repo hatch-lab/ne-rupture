@@ -41,6 +41,8 @@ import re
 import time
 import math
 
+from tqdm import tqdm
+
 ### Constants
 R_GRAPH_PATH = (ROOT_PATH / ("validate/find-hyperparameters/make-graphs.R")).resolve()
 
@@ -113,10 +115,13 @@ param_ranges = []
 divisor = steps**(float(1)/len(params))
 params_string = []
 for param in params:
-  min_value = np.min(hyper_conf[param])
-  max_value = np.max(hyper_conf[param])
-  delta = (max_value-min_value)/divisor
-  param_ranges.append(np.arange(min_value, max_value, delta))
+  if len(hyper_conf[param]) == 2:
+    min_value = np.min(hyper_conf[param])
+    max_value = np.max(hyper_conf[param])
+    delta = (max_value-min_value)/divisor
+    param_ranges.append(np.arange(min_value, max_value, delta))
+  else:
+    param_ranges.append(np.array(hyper_conf[param]))
   params_string.append("{} = {:2.6f}")
 
 params_string = ", ".join(params_string)

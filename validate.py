@@ -83,7 +83,7 @@ print("Running classifier \033[1m" + classifier_name + "\033[0m...")
 
 data = pd.read_csv(str(data_file_path), header=0, dtype={ 'particle_id': str })
 
-finished, classified_data = classifier.run(data, tiff_path, conf=classifier_conf)
+done, classified_data = classifier.run(data, tiff_path, conf=classifier_conf)
 
 def prettify_summary_table(summary):
   data_sets = []

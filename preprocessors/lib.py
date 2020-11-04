@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 from scipy import interpolate
 from scipy import spatial
+import subprocess
 
 def base_transform(data, params):
   """
@@ -182,10 +183,12 @@ def fit_splines(data, column_params, tmp_path):
 
   Doing this as a work around.
   """
-
   column_params = list(zip(*column_params))
   fit_columns = list(column_params[0])
   column_stems = list(column_params[1])
+  spars = None
+  if len(column_params) == 3:
+    spars = [ str(x) for x in list(column_params[2]) ]
 
   # Write out data to tmp
   tmp_path.mkdir(exist_ok=True)
@@ -193,7 +196,7 @@ def fit_splines(data, column_params, tmp_path):
 
   data.to_csv(str(tmp_file_path), header=True, encoding='utf-8', index=None)
 
-  r_spline_path = (ROOT_PATH / ("preprocessors/R/smooth-spline.R")).resolve()
+  r_spline_path = (ROOT_PATH / ("common/R/smooth-spline.R")).resolve()
   cmd = [
     "Rscript",
     "--vanilla",
@@ -202,8 +205,10 @@ def fit_splines(data, column_params, tmp_path):
     ",".join(fit_columns),
     ",".join(column_stems)
   ]
-  # subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-  subprocess.call(cmd)
+  if spars is not None:
+    cmd.append(",".join(spars))
+  subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+  # subprocess.call(cmd)
 
   data = pd.read_csv(str(tmp_file_path), header=0, dtype={ 'particle_id': str })
   tmp_file_path.unlink()

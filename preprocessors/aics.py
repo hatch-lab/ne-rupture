@@ -36,7 +36,7 @@ from yaspin import yaspin
 from yaspin.spinners import Spinners
 
 from feature_extraction import tracks
-from lib import base_transform, make_stationary, fit_spline, normalize_intensity
+from lib import base_transform, make_stationary, fit_splines, normalize_intensity
 
 NAME      = "aics"
 
