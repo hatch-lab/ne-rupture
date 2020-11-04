@@ -40,7 +40,7 @@ if(!("true_event" %in% names(data))) {
   have_true_events <- F
 }
 
-package_list <- c("ggplot2", "cowplot", "jsonlite", "rlist", "plyr")
+package_list <- c("ggplot2", "cowplot", "jsonlite", "rlist", "plyr", "viridis", "patchwork")
 new_packages <- package_list[!(package_list %in% installed.packages()[,"Package"])]
 if(length(new_packages)) {
   install.packages(new_packages, repos = "http://ftp.ussg.iu.edu/CRAN/")
@@ -68,6 +68,7 @@ classifier_conf <- fromJSON(raw_conf)
 get_event_groups <- function(df, event_id_column="event_id", event_column="event") {
   groups <- data.frame(
     event = character(),
+    event_id = as.integer(character()),
     start = as.numeric(character()),
     end = as.numeric(character()),
     frame_start = as.integer(character()),
@@ -98,9 +99,10 @@ get_event_groups <- function(df, event_id_column="event_id", event_column="event
     frame_end <- max(df$frame[event_idx])
     event_type <- unique(df[event_idx, c(event_column)])[[1]]
 
-    groups[nrow(groups)+1,] <- c(event_type, start, end, frame_start, frame_end, F, colors[[event_type]])
+    groups[nrow(groups)+1,] <- c(event_type, event_id, start, end, frame_start, frame_end, F, colors[[event_type]])
   }
   
+  groups$event_id <- as.integer(groups$event_id)
   groups$start <- as.numeric(groups$start)
   groups$end <- as.numeric(groups$end)
   groups$frame_start <- as.integer(groups$frame_start)
@@ -132,10 +134,14 @@ format_time_labels <- function() {
 # This is actually a wrapper around the actual function,
 # which is necessary for ggplot2
 ##
-format_frame_labels <- function() {
+format_frame_labels <- function(frame_rate=1) {
   return(function(x) {
-    return(floor(x))
+    return(floor(x/frame_rate))
   })
+}
+
+get_time_breaks <- function(step=6) {
+  return(seq(0,24*60*60,6*60*60))
 }
 
 # Generate a list of plots for each particle
@@ -200,42 +206,86 @@ for(m in 1:length(data_sets)) {
     }
     
     # Generate plots
-    median_cutoff <- classifier_conf[['median_cutoff']]
-    baseline_median <- mean(df$stationary_median[which(df$event == "N")], na.rm=T)
-    median_annotation <- median_cutoff
-    median_limit <- max(c(
-      abs(min(c(df$stationary_median*1.5, median_annotation*1.5), na.rm=T)), 
-      abs(max(c(df$stationary_median*1.5, median_annotation*1.5), na.rm=T))
-    ), na.rm=T)
-    
-    median_plot <- base_plot +
-      geom_line(aes(x=time, y=stationary_median)) +
-      ggtitle(paste0(data_set, ":", pid)) +
-      scale_y_continuous(name="Nuclear mean intensity", limits=c(-median_limit, median_limit)) +
-      scale_x_continuous(name="", labels=format_time_labels(), sec.axis = sec_axis(~./frame_rate, name="Frame", labels=format_frame_labels())) +
-      annotate(geom="segment", x=-Inf, xend=Inf, y=median_annotation, yend=median_annotation, color="red", alpha=0.7) +
-      annotate(geom="segment", x=-Inf, xend=Inf, y=baseline_median, yend=baseline_median, linetype="dashed", alpha=0.7)
-    if(have_true_events) {
-      median_plot <- median_plot +
-        annotate(geom="text", x=0.1, y=0.05, label="Predicted", alpha=0.8, hjust=0) +
-        annotate(geom="text", x=0.1, y=-0.05, label="True", alpha=0.8, hjust=0)
-    }
-
-    cutoff <- classifier_conf[['stationary_cyto_median']]
-    baseline <- mean(df$stationary_cyto_median[which(df$event == "N")], na.rm=T)
-    annotation <- cutoff
+    mitosis_cutoff <- classifier_conf[['mitosis_area']]
+    baseline <- mean(df$area[which(df$event == "N")], na.rm=T)
     limit <- max(c(
-      abs(min(c(df$stationary_cyto_median*1.5, annotation*1.5), na.rm=T)), 
-      abs(max(c(df$stationary_cyto_median*1.5, annotation*1.5), na.rm=T))
+      abs(min(c(df$area*1.5, mitosis_cutoff*1.5), na.rm=T)), 
+      abs(max(c(df$area*1.5, mitosis_cutoff*1.5), na.rm=T))
     ), na.rm=T)
-    cyto_plot <- base_plot +
-      geom_line(aes(x=time, y=stationary_cyto_median)) +
-      scale_y_continuous(name="Cytoplasmic median intensity", limits=c(-limit, limit)) +
-      scale_x_continuous(name="", labels=format_time_labels(), sec.axis = sec_axis(~./frame_rate, name="", labels=format_frame_labels())) +
-      annotate(geom="segment", x=-Inf, xend=Inf, y=annotation, yend=annotation, color="red", alpha=0.7) +
+    area_plot <- base_plot + 
+      geom_line(aes(x=time, y=area)) +
+      scale_y_continuous(name=bquote("Area"~(px^2)), limits=c(-limit, limit)) +
+      scale_x_continuous(name="Time", labels=format_time_labels(), breaks=get_time_breaks(), sec.axis = sec_axis(~./frame_rate, name="Frame", labels=format_frame_labels())) +
+      annotate(geom="segment", x=-Inf, xend=Inf, y=mitosis_cutoff, yend=mitosis_cutoff, color="red", alpha=0.7) +
+      annotate(geom="rect", xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=mitosis_cutoff, fill="gray", alpha=0.2) +
       annotate(geom="segment", x=-Inf, xend=Inf, y=baseline, yend=baseline, linetype="dashed", alpha=0.7)
     
-    plots[[(length(plots)+1)]] <- plot_grid(median_plot, cyto_plot, nrow=2, align="v", rel_heights=c(1.8,1.4))
+    cyto_mean_derivative_q1 <- classifier_conf[['cyto_mean_derivative_q1']]
+    median_derivative_q1 <- classifier_conf[['median_derivative_q1']]
+    cyto_mean_derivative_q4 <- classifier_conf[['cyto_mean_derivative_q4']]
+    median_derivative_q4 <- classifier_conf[['median_derivative_q4']]
+    
+    limit <- max(c(
+      abs(min(c(df$cyto_mean_derivative*1.2, cyto_mean_derivative_q1*1.5), na.rm=T)), 
+      abs(max(c(df$cyto_mean_derivative*1.2, cyto_mean_derivative_q4*1.5), na.rm=T))
+    ), na.rm=T)
+    baseline <- mean(df$cyto_mean_derivative[which(df$event == "N")], na.rm=T)
+    cyto_mean_deriv_plot <- base_plot + 
+      geom_line(aes(x=time, y=cyto_mean_derivative)) +
+      scale_y_continuous(name="Cyto. mean intensity\nvelocity (AU / s)", limits=c(-limit, limit)) +
+      scale_x_continuous(name="Frame", labels=format_frame_labels(df$frame_rate[[1]]), breaks=get_time_breaks(), position="top") +
+      annotate(geom="segment", x=-Inf, xend=Inf, y=cyto_mean_derivative_q1, yend=cyto_mean_derivative_q1, color="red", alpha=0.7) +
+      annotate(geom="segment", x=-Inf, xend=Inf, y=cyto_mean_derivative_q4, yend=cyto_mean_derivative_q4, color="red", alpha=0.7) +
+      annotate(geom="rect", xmin=-Inf, xmax=Inf, ymin=cyto_mean_derivative_q4, ymax=cyto_mean_derivative_q1, fill="gray", alpha=0.2) +
+      annotate(geom="segment", x=-Inf, xend=Inf, y=baseline, yend=baseline, linetype="dashed", alpha=0.7)
+    
+    limit <- max(c(
+      abs(min(c(df$median_derivative*1.2, median_derivative_q4*1.5), na.rm=T)), 
+      abs(max(c(df$median_derivative*1.2, median_derivative_q1*1.5), na.rm=T))
+    ), na.rm=T)
+    baseline <- mean(df$median_derivative[which(df$event == "N")], na.rm=T)
+    median_deriv_plot <- base_plot + 
+      geom_line(aes(x=time, y=median_derivative)) +
+      scale_y_continuous(name="Nuc. mean intensity\nvelocity (AU / s)", limits=c(-limit, limit)) +
+      scale_x_continuous(name="Time", labels=format_time_labels(), breaks=get_time_breaks()) +
+      annotate(geom="segment", x=-Inf, xend=Inf, y=median_derivative_q1, yend=median_derivative_q1, color="red", alpha=0.7) +
+      annotate(geom="segment", x=-Inf, xend=Inf, y=median_derivative_q4, yend=median_derivative_q4, color="red", alpha=0.7) +
+      annotate(geom="rect", xmin=-Inf, xmax=Inf, ymin=median_derivative_q1, ymax=median_derivative_q4, fill="gray", alpha=0.2) +
+      annotate(geom="segment", x=-Inf, xend=Inf, y=baseline, yend=baseline, linetype="dashed", alpha=0.7)
+    
+    stationary_mean <- classifier_conf[['stationary_median']]
+    limit <- max(c(
+      abs(min(c(df$stationary_median*1.2,stationary_mean*1.5), na.rm=T)), 
+      abs(max(c(df$stationary_median*1.2,stationary_mean*1.5), na.rm=T))
+    ), na.rm=T)
+    baseline <- mean(df$stationary_median[which(df$event == "N")], na.rm=T)
+    mean_plot <- base_plot + 
+      geom_line(aes(x=time, y=stationary_median)) +
+      scale_y_continuous(name="Nuc. mean intensity (AU)", limits=c(-limit, limit)) +
+      scale_x_continuous(name="Time", labels=format_time_labels(), breaks=get_time_breaks()) +
+      annotate(geom="segment", x=-Inf, xend=Inf, y=stationary_mean, yend=stationary_mean, color="red", alpha=0.7) +
+      annotate(geom="rect", xmin=-Inf, xmax=Inf, ymin=stationary_mean, ymax=Inf, fill="gray", alpha=0.2) +
+      annotate(geom="segment", x=-Inf, xend=Inf, y=baseline, yend=baseline, linetype="dashed", alpha=0.7)
+    
+    stationary_cyto_mean <- classifier_conf[['stationary_cyto_mean']]
+    limit <- max(c(
+      abs(min(c(df$stationary_cyto_mean*1.2,stationary_cyto_mean*1.5), na.rm=T)), 
+      abs(max(c(df$stationary_cyto_mean*1.2,stationary_cyto_mean*1.5), na.rm=T))
+    ), na.rm=T)
+    baseline <- mean(df$stationary_cyto_mean[which(df$event == "N")], na.rm=T)
+    cyto_mean_plot <- base_plot + 
+      geom_line(aes(x=time, y=stationary_cyto_mean)) +
+      scale_y_continuous(name="Cyto mean intensity (AU)", limits=c(-limit, limit)) +
+      scale_x_continuous(name="Frame", labels=format_frame_labels(df$frame_rate[[1]]), breaks=get_time_breaks(), position="top") +
+      annotate(geom="segment", x=-Inf, xend=Inf, y=stationary_cyto_mean, yend=stationary_cyto_mean, color="red", alpha=0.7) +
+      annotate(geom="rect", xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=stationary_cyto_mean, fill="gray", alpha=0.2) +
+      annotate(geom="segment", x=-Inf, xend=Inf, y=baseline, yend=baseline, linetype="dashed", alpha=0.7)
+    
+    combined <- (cyto_mean_deriv_plot | cyto_mean_plot) / (median_deriv_plot | mean_plot) / area_plot + 
+      plot_annotation(
+        title = paste0(data_set, ":", pid)
+      )
+    plots[[(length(plots)+1)]] <- combined
 
     # Plots to put under movies
     movie_plot <- ggplot(df, aes(x=frame, y=stationary_median))
