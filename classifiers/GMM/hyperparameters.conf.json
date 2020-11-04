@@ -1,0 +1,4 @@
+{
+  "model_rupture_cutoff": [ 0.0, 1.0 ],
+  "meta_rupture_cutoff": [ 0.25, 0.5, 0.75 ]
+}

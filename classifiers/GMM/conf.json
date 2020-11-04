@@ -1,0 +1,22 @@
+{
+  "training_data_path": "classifiers/GMM/data.train.csv",
+  "training_cols": [ "stationary_median", "stationary_cyto_mean", "median_derivative", "cyto_mean_derivative" ],
+  "pickled_model_path": "classifiers/GMM/models.joblib",
+
+  "model_rupture_cutoff": 0.93,
+  "meta_rupture_cutoff": 0.25,
+
+  "tmp_dir": "tmp/classifiers/GMM",
+
+  "baseline_median_scale_factor": 0.95,
+
+  "recoveries": {
+    "R": "E"
+  },
+
+  "sliding_window_width": 767,
+  "sliding_window_step": 235,
+  "convergence_limit": 0.00003,
+
+  "train": false
+}
