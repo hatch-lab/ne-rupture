@@ -3,7 +3,7 @@
   "training_cols": [ "stationary_median", "stationary_cyto_mean", "median_derivative", "cyto_mean_derivative" ],
   "pickled_model_path": "classifiers/GMM/models.joblib",
 
-  "model_rupture_cutoff": 0.93,
+  "model_rupture_cutoff": 0.9833,
   "meta_rupture_cutoff": 0.25,
 
   "tmp_dir": "tmp/classifiers/GMM",

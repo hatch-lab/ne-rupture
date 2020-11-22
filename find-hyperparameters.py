@@ -4,13 +4,13 @@
 Attempts to find optimal parameters for a given model
 
 Usage:
-  find-hyperparameters.py CLASSIFIER [--test-data-folder=validate/validation-data/input/] [--steps=3600] [--skip-graphs=0]
+  find-hyperparameters.py CLASSIFIER [--training-data-path=validate/validation-data/input/train.csv] [--steps=3600] [--skip-graphs=0]
 
 Arguments:
   CLASSIFIER The name of the classifier to test
 
 Options:
-  --test-data-folder=<string> [defaults: validate/validation-data/input] The directory with the CSV file containing particle data with true events
+  --training-data-path=<string> [defaults: validate/validation-data/input/train.csv] The CSV file containing particle data with true events
   --steps=<int> [defaults: 3600] The number of values to try for each hyper parameter
   --skip-graphs=<bool> [defaults: False] If true, will not print AUC curves
 
@@ -53,9 +53,9 @@ classifier_name = re.sub(r'[^a-zA-Z0-9\-\_\.\+]', '', arguments['CLASSIFIER'])
 if classifier_name != arguments['CLASSIFIER']:
   print(colorize("yellow", "Classifier input has been sanitized to " + classifier_name))
 
-data_file_path = Path(arguments['--test-data-folder']).resolve() if arguments['--test-data-folder'] else Path("validate/validation-data/input/data.csv").resolve()
+data_file_path = Path(arguments['--training-data-path']).resolve() if arguments['--training-data-path'] else Path("validate/validation-data/input/train.csv").resolve()
 if not data_file_path.exists():
-  print(colorize("red", "Data folder input cannot be found: \033[1m" + str(data_file_path) + "\033[0m"))
+  print(colorize("red", "Training data file cannot be found: \033[1m" + str(data_file_path) + "\033[0m"))
   exit(1)
 
 steps = int(arguments['--steps']) if arguments['--steps'] else 3600

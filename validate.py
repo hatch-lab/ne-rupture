@@ -4,14 +4,14 @@
 Calculates scores for a given classifier
 
 Usage:
-  validate.py CLASSIFIER [--input-path=validate/validation-data/input/] [--input-name=data.csv] [--img-dir=0] [--classifier-conf=0] [--skip-graphs=0] [--skip-filtered=0]
+  validate.py CLASSIFIER [--input-path=validate/validation-data/input/] [--input-name=test.csv] [--img-dir=0] [--classifier-conf=0] [--skip-graphs=0] [--skip-filtered=0]
 
 Arguments:
   CLASSIFIER The name of the classifier to test
 
 Options:
   --input-path=<string> [defaults: validate/validation-data/input] The directory with the CSV file containing particle data with true events
-  --input-name=<string> [defaults: data.csv] The name of the input CSV file
+  --input-name=<string> [defaults: test.csv] The name of the input CSV file
   --img-dir=<string> [defaults: [input_path]/../images] The directory that contains TIFF images of each frame, for outputting videos.
   --classifier-conf=<string> [defaults: None] Will be passed along to the classifier.
   --skip-graphs=<bool> [defaults: False] If True, won't output graphs or videos
@@ -60,7 +60,7 @@ if not input_path.exists():
   print(colorize("red", "Data folder input cannot be found: \033[1m" + str(input_path) + "\033[0m"))
   exit(1)
 
-data_file_path = input_path / (arguments['--input-name']) if arguments['--input-name'] else input_path / "data.csv"
+data_file_path = input_path / (arguments['--input-name']) if arguments['--input-name'] else input_path / "test.csv"
 tiff_path = input_path / (arguments['--img-dir']) if arguments['--img-dir'] else (input_path / ("../images/")).resolve()
 
 classifier_conf = arguments['--classifier-conf'] if arguments['--classifier-conf'] else False

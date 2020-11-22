@@ -122,7 +122,7 @@ format_time_labels <- function() {
     minutes <- (x-(hours*3600)) %/% 60
     seconds <- (x-(hours*3600)) %% 60
     
-    return(paste0(sprintf("%02dh", hours), sprintf("%02d′", minutes), sprintf("%02d″", seconds)))
+    return(paste0(sprintf("%02fh", hours), sprintf("%02f′", minutes), sprintf("%02f″", seconds)))
   })
 }
 
@@ -181,7 +181,7 @@ duration_plot <- ggplot(event_data, aes(x=event_label, y=duration)) +
   geom_jitter(width=0.2, height=0.2, alpha=0.1) +
   geom_violin() +
   stat_summary(
-    fun.y=median,
+    fun=median,
     geom="errorbar",
     aes(ymax=..y.., ymin=..y..),
     color="red",
@@ -196,7 +196,7 @@ normalized_duration_plot <- ggplot(event_data, aes(x=event_label, y=normalized_d
   geom_jitter(width=0.2, height=0.2, alpha=0.1) +
   geom_violin() +
   stat_summary(
-    fun.y=median,
+    fun=median,
     geom="errorbar",
     aes(ymax=..y.., ymin=..y..),
     color="red",
@@ -211,7 +211,7 @@ fp_lost_plot <- ggplot(event_data[which(!(event_data$event %in% c("R", "E"))),],
   geom_jitter(width=0.2, height=0.2, alpha=0.1) +
   geom_violin() +
   stat_summary(
-    fun.y=median,
+    fun=median,
     geom="errorbar",
     aes(ymax=..y.., ymin=..y..),
     color="red",
@@ -226,7 +226,7 @@ hole_size_plot <- ggplot(event_data[which(!(event_data$event %in% c("R", "E"))),
   geom_jitter(width=0.2, height=0.2, alpha=0.1) +
   geom_violin() +
   stat_summary(
-    fun.y=median,
+    fun=median,
     geom="errorbar",
     aes(ymax=..y.., ymin=..y..),
     color="red",

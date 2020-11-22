@@ -153,8 +153,8 @@ def seed_events(data, tiff_path, tmp_csv_path, conf, idx=0):
 
     text_color = 'rgb(0,0,0)' if inversion else 'rgb(255,255,255)'
     reticle_color = 'rgb(255,255,255)' if inversion else 'rgb(0,0,0)'
-    draw.text((10, 15), title, fill=text_color, font=title_font)
-    draw.text((10, 35), label, fill=text_color, font=small_font)
+    draw.text((10, 10), title, fill=text_color, font=title_font)
+    draw.text((10, 30), label, fill=text_color, font=small_font)
     draw.text((10, crop_frame.shape[0]-50), controls, fill=text_color, font=small_font)
 
     # Add reticles
