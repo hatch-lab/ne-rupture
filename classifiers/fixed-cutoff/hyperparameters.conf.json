@@ -1,6 +1,6 @@
 {
-  "cyto_mean_derivative_min": [ -8E-4, 5E-4 ],
-  "cyto_mean_derivative_max": [ -8E-4, 5E-4 ],
-  "median_derivative_min": [ -10E-4, 5E-4 ],
-  "median_derivative_max": [ -10E-4, 5E-4 ]
+  "median_derivative_min": [ -1E-3, 5.5E-4 ],
+  "median_derivative_max": [ -1E-3, 5.5E-4 ],
+  "cyto_mean_derivative_min": [ -9E-4, 5E-4 ],
+  "cyto_mean_derivative_max": [ -9E-4, 5E-4 ]
 }
