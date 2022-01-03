@@ -1,12 +1,6 @@
 {
-  "neighborly_mean": -6.666667E-02,
-
-  "stationary_cyto_mean": 0.021666667,
-
-  "cyto_mean_derivative_min": -9E-4,
-  "cyto_mean_derivative_max": 3.651746E-4,
-  "median_derivative_min": 5.206978E-7,
-  "median_derivative_max": 4.007290E-4,
+  "cyto": 0.2513,
+  "mean": -0.0751,
 
   "baseline_median_scale_factor": 0.92,
 

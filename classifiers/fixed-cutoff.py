@@ -74,11 +74,11 @@ def seed_events(data, conf):
   data.sort_values([ 'data_set', 'particle_id', 'frame' ], inplace=True)
   data.reset_index(inplace=True, drop=True)
 
-  r_idx = ((data['neighborly_mean'] <= conf['neighborly_mean']) & (data['stationary_cyto_mean'] >= conf['stationary_cyto_mean']))
+  r_idx = (
+    (data['new_cyto_mean_derivative'] >= conf['new_cyto_mean_derivative']) &
+    (data['new_mean_derivative'] <= conf['new_mean_derivative']) 
+  )
   data.loc[(r_idx), 'event'] = 'R'
-
-  n_idx = ((data['event'] == 'R') & ((data['median_derivative'] > conf['median_derivative_max']) | (data['median_derivative'] < conf['median_derivative_min']) | (data['cyto_mean_derivative'] > conf['cyto_mean_derivative_max']) | (data['cyto_mean_derivative'] < conf['cyto_mean_derivative_min'])))
-  data.loc[(n_idx), 'event'] = 'N'
 
   return data
 

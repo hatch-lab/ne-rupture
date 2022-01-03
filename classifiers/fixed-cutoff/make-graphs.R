@@ -260,7 +260,6 @@ for(m in 1:length(data_sets)) {
       annotate(geom="segment", x=-Inf, xend=Inf, y=baseline, yend=baseline, linetype="dashed", alpha=0.7)
     
     stationary_mean <- classifier_conf[['stationary_median']]
-    std <- df$mean_std[[1]]*classifier_conf[['mean_std_factor']]*-1
     limit <- max(c(
       abs(min(c(df$stationary_median*1.2,stationary_mean*1.5), na.rm=T)), 
       abs(max(c(df$stationary_median*1.2,stationary_mean*1.5), na.rm=T))
@@ -271,13 +270,10 @@ for(m in 1:length(data_sets)) {
       scale_y_continuous(name="Nuc. mean intensity (AU)", limits=c(-limit, limit)) +
       scale_x_continuous(name="Time", labels=format_time_labels(), breaks=get_time_breaks()) +
       annotate(geom="segment", x=-Inf, xend=Inf, y=stationary_mean, yend=stationary_mean, color="red", alpha=0.7) +
-      annotate(geom="segment", x=-Inf, xend=Inf, y=std, yend=std, color="blue", alpha=0.7) +
       annotate(geom="rect", xmin=-Inf, xmax=Inf, ymin=stationary_mean, ymax=Inf, fill="gray", alpha=0.2) +
-      annotate(geom="rect", xmin=-Inf, xmax=Inf, ymin=std, ymax=Inf, fill="gray", alpha=0.2) +
       annotate(geom="segment", x=-Inf, xend=Inf, y=baseline, yend=baseline, linetype="dashed", alpha=0.7)
     
     stationary_cyto_mean <- classifier_conf[['stationary_cyto_mean']]
-    std <- df$cyto_mean_std[[1]]*classifier_conf[['cyto_mean_std_factor']]
     limit <- max(c(
       abs(min(c(df$stationary_cyto_mean*1.2,stationary_cyto_mean*1.5), na.rm=T)), 
       abs(max(c(df$stationary_cyto_mean*1.2,stationary_cyto_mean*1.5), na.rm=T))
@@ -288,12 +284,14 @@ for(m in 1:length(data_sets)) {
       scale_y_continuous(name="Cyto mean intensity (AU)", limits=c(-limit, limit)) +
       scale_x_continuous(name="Frame", labels=format_frame_labels(df$frame_rate[[1]]), breaks=get_time_breaks(), position="top") +
       annotate(geom="segment", x=-Inf, xend=Inf, y=stationary_cyto_mean, yend=stationary_cyto_mean, color="red", alpha=0.7) +
-      annotate(geom="segment", x=-Inf, xend=Inf, y=std, yend=std, color="blue", alpha=0.7) +
       annotate(geom="rect", xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=stationary_cyto_mean, fill="gray", alpha=0.2) +
-      annotate(geom="rect", xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=std, fill="gray", alpha=0.2) +
       annotate(geom="segment", x=-Inf, xend=Inf, y=baseline, yend=baseline, linetype="dashed", alpha=0.7)
     
-    combined <- (median_deriv_plot | mean_plot) / (cyto_mean_deriv_plot | cyto_mean_plot) + 
+    # combined <- (median_deriv_plot | mean_plot) / (cyto_mean_deriv_plot | cyto_mean_plot) + 
+    #   plot_annotation(
+    #     title = paste0(data_set, ":", pid)
+    #   )
+    combined <- (mean_plot) / (cyto_mean_plot) + 
       plot_annotation(
         title = paste0(data_set, ":", pid)
       )

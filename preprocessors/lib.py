@@ -284,16 +284,12 @@ def find_nearest_neighbor_distances(f_data):
   # Build KDTree
   tree = spatial.KDTree(coords)
 
-  res = tree.query([ coords ], k=2)
-  distances = res[0][...,1][0]
-  idxs = res[1][...,1][0]
-  if len(idxs) < 2:
-    f_data['nearest_neighbor'] = ""
-    f_data['nearest_neighbor_distance'] = 0.0
-    return f_data
-
-  neighbor_ids = f_data['particle_id'].iloc[idxs].tolist()
-  f_data['nearest_neighbor'] = neighbor_ids
-  f_data['nearest_neighbor_distance'] = distances
+  res = tree.query([ coords ], k=6)
+  for i in range(1,6):
+    idxs = res[1][...,i][0]
+    neighbor_ids = f_data['particle_id'].iloc[idxs].tolist()
+    distances = res[0][...,i][0]
+    f_data['nearest_neighbor_' + str(i)] = neighbor_ids
+    f_data['nearest_neighbor_' + str(i) + '_distance'] = distances
 
   return f_data

@@ -441,7 +441,8 @@ def process_data(data_path, params):
   img = None
   for i in tqdm(frames, ncols=90, unit="frames"):
     masks = all_masks[(i-1),:,:].copy()
-    img = cv2.imread(str(raw_paths[(i-1)]), cv2.IMREAD_GRAYSCALE)
+    file_name = str(i).zfill(4) + ".tif"
+    img = cv2.imread(str(raw_path / file_name), cv2.IMREAD_GRAYSCALE)
     pids = data.loc[( data['frame'] == i ), 'particle_id'].unique()
 
     for pid in pids:
@@ -492,7 +493,7 @@ def process_data(data_path, params):
       cyto_data['cyto_median'].append(np.ma.median(masked_img))
       cyto_data['cyto_max'].append(np.ma.max(masked_img))
       cyto_data['cyto_min'].append(np.ma.min(masked_img))
-      cyto_data['cyto_std'].append(np.ma.std(masked_img)) 
+      cyto_data['cyto_std'].append(np.ma.std(masked_img))
   
   cyto_data = pd.DataFrame(cyto_data)
   cyto_data = cyto_data.astype({
