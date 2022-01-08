@@ -14,7 +14,7 @@ R_sig='2677aaf9da03e101f9e651c80dbec25461479f56'
 R_package='http://ftp.ussg.iu.edu/CRAN/bin/macosx/R-3.6.3.pkg'
 
 XQuartz_sig='787b238fb09fec56665f2badf896a2e83e4fe2e0'
-XQuartz_package='https://dl.bintray.com/xquartz/downloads/XQuartz-2.7.11.dmg'
+XQuartz_package='https://github.com/XQuartz/XQuartz/releases/download/XQuartz-2.7.11/XQuartz-2.7.11.dmg'
 XQuartz_package_name='XQuartz.pkg'
 
 branch="stable"
