@@ -28,10 +28,10 @@ from scipy import ndimage as ndi
 
 from skimage.feature import register_translation
 
-from aicspkg.aicssegmentation.core.pre_processing_utils import intensity_normalization
-from aicspkg.aicssegmentation.core.pre_processing_utils import image_smoothing_gaussian_3d
-from aicspkg.aicssegmentation.core.MO_threshold import MO
-from aicspkg.aicssegmentation.core.seg_dot import dot_2d_slice_by_slice_wrapper
+from external.aicspkg.aicssegmentation.core.pre_processing_utils import intensity_normalization
+from external.aicspkg.aicssegmentation.core.pre_processing_utils import image_smoothing_gaussian_3d
+from external.aicspkg.aicssegmentation.core.MO_threshold import MO
+from external.aicspkg.aicssegmentation.core.seg_dot import dot_2d_slice_by_slice_wrapper
 
 from tqdm import tqdm
 from yaspin import yaspin
