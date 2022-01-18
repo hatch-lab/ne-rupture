@@ -1,5 +1,24 @@
 # coding=utf-8
 
+"""
+Gets data into a format readable by classifiers
+
+Usage:
+  preprocess.py aics [options] [--] INPUT
+
+Arguments:
+  INPUT Path to the directory containing the raw data (CSV files for Imaris, TIFFs for MATLAB)
+
+Options:
+  -h, --help
+  -v, --version
+  --filter-window=<int>  [default: 8] The window size used for the median pass filter, in px
+  --gamma=<float>  [default: 0.50] The gamma correction to use
+  --rolling-ball-size=<int>  [default: 100] The rolling ball diameter to use for rolling ball subtraction, in um
+  --frame-rate=<int>  [default: 180] The seconds that elapse between frames
+  --mip-dir=<string>  [defaults: INPUT/images/(data_set)/mip] The path to MIP files
+"""
+
 import sys
 import os
 from pathlib import Path
@@ -10,9 +29,9 @@ ROOT_PATH = Path(__file__ + "/../..").resolve()
 sys.path.append(str(ROOT_PATH))
 sys.path.append(str(ROOT_PATH / "preprocessors"))
 
-from common.docopt import docopt
-from common.output import colorize
-import common.video as hatchvid
+from docopt import docopt
+from lib.output import colorize
+import lib.video as hatchvid
 
 import numpy as np
 import pandas as pd
@@ -21,7 +40,7 @@ from time import time
 
 import cv2
 
-from skimage.external import tifffile
+import tifffile
 from skimage.color import label2rgb
 from skimage import measure, exposure, morphology, segmentation, transform
 from scipy import ndimage as ndi
@@ -40,7 +59,18 @@ from yaspin.spinners import Spinners
 from feature_extraction import tracks
 from lib import base_transform
 
+from schema import Schema, And, Or, Use, SchemaError, Optional, Regex
+
 NAME      = "aics"
+
+def get_schema():
+  return {
+    'aics': lambda x: True,
+    Optional('--mip-dir'): And(str, len),
+    '--filter-window': And(Use(int), lambda n: n > 0, error='--filter-window must be > 0'),
+    '--gamma': And(Use(float), lambda n: n > 0, error='--gamma must be > 0'),
+    '--rolling-ball-size': And(Use(int), lambda n: n > 0)
+  }
 
 def get_default_data_path(input_path):
   """
@@ -66,13 +96,13 @@ def process_data(data_path, params):
     pandas.DataFrame The extracted features for each cell
   """
 
-  data_set = params['data_set']
+  data_set = params['--data-set']
   input_path = params['input_path']
-  channel = params['channel']
-  pixel_size = params['pixel_size']
+  channel = params['--channel']
+  pixel_size = params['--pixel-size']
   tiff_path = params['tiff_path']
-  mip_path = params['mip_path']
-  keep_imgs = params['keep_imgs']
+  mip_path = (input_path / (arguments['--mip-dir'])).resolve() if arguments['--mip-dir'] else (tiff_path / "mip")
+  keep_imgs = params['--keep-imgs']
 
   tiff_path.mkdir(mode=0o755, parents=True, exist_ok=True)
   mip_path.mkdir(mode=0o755, parents=True, exist_ok=True)
@@ -255,7 +285,7 @@ def process_data(data_path, params):
   data['x_conversion'] = pixel_size
   data['y_conversion'] = pixel_size
 
-  # Fake median and sum
+  # Fake median and generate sum
   data['median'] = data['mean']
   data['sum'] = data['area']*data['mean']
 
@@ -478,7 +508,7 @@ def process_data(data_path, params):
     cv2.imwrite(str(mip_path / (pid + "-ref.tif")), ref_particle_imgs[pid])
 
   fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-  writer = cv2.VideoWriter(str(mip_path / ("test.mp4")), fourcc, 10, (all_masks.shape[1], all_masks.shape[2]), True)
+  writer = cv2.VideoWriter(str(mip_path / ("mip.mp4")), fourcc, 10, (all_masks.shape[1], all_masks.shape[2]), True)
 
   for i in frames:
     masks = all_masks[(i-1),:,:]

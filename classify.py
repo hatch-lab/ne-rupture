@@ -4,11 +4,11 @@
 Classifies particle events using a given classifier
 
 Usage:
-  classify.py CLASSIFIER INPUT [--input-name=<string>] [--output-name=<string>] [--cell-summary-name=<string>] [--event-summary-name=<string>] [--output-dir=<string>] [--input-dir=<string>] [--skip-graphs] [--img-dir=<string>] [--conf=<string>] [--start-over]
+  classify.py [options] CLASSIFIER INPUT [<args>...]
 
 Arguments:
   CLASSIFIER The name of the classifier to test
-  INPUT Path to the directory containing particle data
+  INPUT The input path
 
 Options:
   -h --help Show this screen.
@@ -22,7 +22,6 @@ Options:
   --skip-graphs  Whether to skip producing graphs or videos
   --img-dir=<string>  [default: images] The subdirectory that contains TIFF images of each frame, for outputting videos.
   --conf=<string>  Override configuration options in conf.json with a JSON string.
-  --start-over  Whether to pick up from where we last left off or start over, if that classifier supports it
 
 Output:
   Generates graphs of each nucleus's predicted and actual events.
@@ -37,20 +36,39 @@ ROOT_PATH = Path(__file__ + "/..").resolve()
 
 sys.path.append(str(ROOT_PATH))
 
-from common.docopt import docopt
-from common.version import get_version
-from common.output import colorize
+from docopt import docopt
+from lib.version import get_version
+from lib.output import colorize
+
+import re
+
+from schema import Schema, And, Or, Use, SchemaError, Optional, Regex
+
+arguments = docopt(__doc__, version=get_version(), options_first=True)
+
+classifier_name = re.sub(r'[^a-zA-Z0-9\-\_\.\+]', '', arguments['CLASSIFIER'])
+if classifier_name != arguments['CLASSIFIER']:
+  print(colorize("yellow", "Classifier has been sanitized to " + classifier_name))
+
+if len(classifier_name) > 0 and os.path.sep not in classifier_name and ((ROOT_PATH / ('classifiers/' + str(classifier_name) + '.py'))).is_file():
+  classifier = import_module("classifiers." + classifier_name)
+else:
+  raise Exception('That classifier does not exist.')
+
+classifier = import_module("classifiers." + classifier_name)
+
+classifier_arguments = docopt(classifier.__doc__, argv=[arguments['CLASSIFIER']] + [arguments['INPUT']] + arguments['<args>'])
+classifier_schema = classifier.get_schema()
+
+arguments.update(classifier_arguments)
 
 import numpy as np
 import pandas as pd
-import re
 import subprocess
 
 from schema import Schema, And, Or, Use, SchemaError, Optional, Regex
 
-arguments = docopt(__doc__, version=get_version())
-
-schema = Schema({
+schema = {
   'CLASSIFIER': And(len, lambda n: (ROOT_PATH / ('classifiers/' + str(n) + '.py')).is_file(), error='That classifier does not exist'),
   'INPUT': And(len, lambda n: os.path.exists(n), error='INPUT does not exist'),
   '--input-name': len,
@@ -62,17 +80,18 @@ schema = Schema({
   Optional('--skip-graphs'): bool,
   '--img-dir': len,
   '--conf': Or(None, len),
-  Optional('--start-over'): bool
-})
+  '--help': Or(None, bool),
+  '--version': Or(None, bool),
+  Optional('<args>'): lambda n: True,
+  Optional('--'): lambda n: True
+}
+schema.update(classifier_schema)
 
 try:
-  arguments = schema.validate(arguments)
+  arguments = Schema(schema).validate(arguments)
 except SchemaError as error:
   print(error)
   exit(1)
-
-### Constant for getting our base input dir
-QA_PATH  = (ROOT_PATH / ("validate/qa.py")).resolve()
 
 ### Arguments and inputs
 classifier_name = arguments['CLASSIFIER']
@@ -89,14 +108,14 @@ cell_summary_name = arguments['--cell-summary-name']
 skip_graphs = True if arguments['--skip-graphs'] else False
 conf = json.loads(arguments['--conf']) if arguments['--conf'] else False
 
-start_over = True if arguments['--start-over'] else False
+start_over = True if '--start-over' in arguments and arguments['--start-over'] else False
 
 ### Get our classifier
 classifier = import_module("classifiers." + classifier_name)
 
 tmp_path = ROOT_PATH / ("tmp/classifiers/" + classifier_name)
 tmp_path.mkdir(mode=0o755, parents=True, exist_ok=True)
-intermediate_path = tmp_path / (arguments['--input-name'])
+intermediate_path = tmp_path / (re.sub(r'[^a-zA-Z0-9\-\_\.\+]', '', arguments['INPUT']) + "/" + arguments['--input-name'])
 
 if classifier.SAVES_INTERMEDIATES and not start_over:
   data_file_path = intermediate_path if intermediate_path.exists() else data_file_path
@@ -122,28 +141,67 @@ if done and intermediate_path.exists():
 
 
 if not done:
-  print(colorize("red", "The classifier did not finish or there was an error."))
-else:
-  event_file_path = (output_path / (event_summary_name)).resolve()
-  cell_file_path = (output_path / (cell_summary_name)).resolve()
+  print(colorize("magenta", "The classifier did not finish or there was an error."))
+  exit(0)
 
-  # Generate event/cell summaries
-  event_summary = classifier.get_event_summary(data, conf)
-  if isinstance(event_summary, pd.DataFrame):
-    event_summary.to_csv(str(event_file_path), header=True, encoding='utf-8', index=None)
+event_file_path = (output_path / (event_summary_name)).resolve()
+cell_file_path = (output_path / (cell_summary_name)).resolve()
 
-  cell_summary = classifier.get_cell_summary(data, conf)
-  if isinstance(cell_summary, pd.DataFrame):
-    cell_summary.to_csv(str(cell_file_path), header=True, encoding='utf-8', index=None)
+# Generate event/cell summaries
+event_summary = classifier.get_event_summary(data, conf)
+if isinstance(event_summary, pd.DataFrame):
+  event_summary.to_csv(str(event_file_path), header=True, encoding='utf-8', index=None)
 
-  if not skip_graphs:
-    cmd = [
-      "python",
-      str(QA_PATH),
-      classifier_name,
-      output_file_path,
-      str(output_path),
-      "--img-dir=" + str(tiff_path)
-    ]
-    subprocess.call(cmd)
+cell_summary = classifier.get_cell_summary(data, conf)
+if isinstance(cell_summary, pd.DataFrame):
+  cell_summary.to_csv(str(cell_file_path), header=True, encoding='utf-8', index=None)
+
+if not skip_graphs:
+  video_path = output_path / "videos"
+  video_path.mkdir(mode=0o755, parents=True, exist_ok=True)
+
+  for data_set in data['data_set'].unique():
+    ds_data = data[( (data['data_set'] == data_set) )]
+    if ds_data.shape[0] <= 0:
+      continue
+
+    ds_data = ds_data[[ 'data_set', 'particle_id', 'frame', 'time', 'x_px', 'y_px', 'event' ]]
+    ds_data.sort_values('frame')
+
+    ds_data['frame_path'] = ds_data.apply(lambda x: str( (tiff_path / (data_set + '/' + str(x.frame).zfill(4) + '.tif')).resolve() ), axis=1)
+    
+    field_video_path = video_path / (data_set + '.mp4')
+    hatchvid.make_video(data, str(field_video_path), movie_name = data_set)
+
+    for particle_id in ds_data['particle_id'].unique():
+      p_data = ds_data[(ds_data['particle_id'])]
+      if p_data.shape[0] <= 0:
+        continue
+
+      (video_path / data_set).mkdir(mode=0o755, parents=True, exist_ok=True)
+
+      r_graph_gen_path = (ROOT_PATH / ("lib/R/make-single-cell-graph.R")).resolve()
+      graph_path = video_path / (data_set + "/" + particle_id + ".tif")
+      # Make our graph
+      cmd = [
+        "Rscript",
+        "--vanilla",
+        str(r_graph_gen_path),
+        str(output_file_path),
+        str(graph_path),
+        data_set,
+        particle_id,
+        "300"
+      ]
+      subprocess.call(cmd)
+
+      data['graph_path'] = str(graph_path)
+
+      cell_video_path = video_path / (data_set + "/" + particle_id + ".mp4")
+
+      hatchvid.make_video(data, str(cell_video_path), crop=( 100, 100 ), scale=3.0, movie_name = data_set + "/" + particle_id)
+
+
+
+
 

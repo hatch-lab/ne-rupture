@@ -1,5 +1,24 @@
 # coding=utf-8
 
+"""
+Manually classify cells
+
+Usage:
+  classify.py manual [options] [--] INPUT
+
+Arguments:
+  INPUT Path to the directory containing particle data
+
+Options:
+  -h, --help
+  -v, --version
+  --start-over  Whether to start over
+
+Output:
+  Generates graphs of each nucleus's predicted and actual events.
+  Generates annotated videos of each nucleus with either a predicted or a true event.
+"""
+
 import sys
 import os
 from pathlib import Path
@@ -12,22 +31,27 @@ import math
 import numpy as np
 import pandas as pd
 import json
-from multiprocessing import Pool, cpu_count
-from time import sleep
 from PIL import Image, ImageDraw, ImageFont
 import cv2
 from scipy import optimize
 import contextlib
 from skimage import exposure, util
+from tqdm import tqdm
 
-import common.video as hatchvid
-from validate.lib import get_cell_stats
+import lib.video as hatchvid
+from lib.summarize import get_cell_stats
 
 NEED_TIFFS = True
 SAVES_INTERMEDIATES = True
 NAME = "manual"
 CONF_PATH = (ROOT_PATH / ("classifiers/manual/conf.json")).resolve()
 FONT_PATH = (ROOT_PATH / ("common/font.ttf")).resolve()
+
+def get_schema():
+  return {
+    'manual': lambda x: True,
+    Optional('--start-over'): bool
+  }
 
 def process_event_seeds(p_data, conf):
   """
@@ -510,57 +534,6 @@ def sliding_average(data, window, step, frame_rate):
 
   return result
 
-def print_progress_bar(message, total, num_left):
-  """
-  Prints a nice progress bar onto the terminal
-
-  Arguments:
-    message string The message to print alongside the bar
-    total int The number of child processes to run
-    num_left int The number of child processes left to run
-  """
-  progress = int(30*(total-num_left)//total)
-  bar = "#" * progress + ' ' * (30 - progress)
-  print("\r{} |{}|".format(message, bar), end="\r")
-
-  if num_left == 0:
-    print()
-
-def apply_parallel(grouped, message,  fn, *args):
-  """
-  Function for parallelizing particle classification
-
-  Will take each DataFrame produced by grouping by particle_id
-  and pass that data to the provided function, along with the 
-  supplied arguments.
-
-  Arguments:
-    grouped list List of grouped particle data
-    message string The message to print alongside the loading bars
-    fn function The function called with a group as a parameter
-    args Arguments to pass through to fn
-
-  Returns:
-    Pandas DataFrame The re-assembled data.
-  """
-
-  total_groups = len(grouped)
-
-  with Pool(cpu_count()) as p:
-    groups = []
-    for name, group in grouped:
-      t = tuple([ group ]) + tuple(args)
-      groups.append(t)
-    rs = p.starmap_async(fn, groups)
-    total = rs._number_left
-
-    while not rs.ready():
-      print_progress_bar(message, total, rs._number_left)
-      sleep(2)
-
-  print_progress_bar(message, total, 0)
-  return pd.concat(rs.get(), sort=False)
-
 def run(data, tiff_path, conf=False, fast=False):
   """
   Run the classifier
@@ -604,7 +577,8 @@ def run(data, tiff_path, conf=False, fast=False):
 
   if not fast and done:
     try:
-      data = apply_parallel(data.groupby([ 'data_set', 'particle_id' ]), "Classifying particles", process_event_seeds, conf)
+      tqdm.pandas(desc="Processing classified events")
+      data = data.groupby([ 'data_set', 'particle_id' ]).progress_apply(process_event_seeds, conf=conf)
     except Exception as e:
       return ( False, data )
 
@@ -630,7 +604,8 @@ def get_event_summary(data, conf=False):
   # Filter out non-events
   cp = cp.loc[( cp['event'] != 'N' ), :]
   
-  events = apply_parallel(cp.groupby([ 'data_set', 'particle_id', 'event_id' ]), "Processing event summaries", get_event_info)
+  tqdm.pandas(desc='Generating event summaries')
+  events = cp.groupby([ 'data_set', 'particle_id', 'event_id' ]).progress_apply(get_event_info)
   return events
 
 def get_baseline_median(p_data):

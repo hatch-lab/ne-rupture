@@ -1,4 +1,4 @@
 {
-  "median_cutoff": [ -0.2, 0.0 ],
-  "median_derivative_cutoff": [ -0.005, 0.005 ]
+  "mean_cutoff": [ -1, 0.5 ],
+  "cyto_mean_cutoff": [ -0.5, 1 ]
 }

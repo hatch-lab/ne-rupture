@@ -1,0 +1,348 @@
+CellProfiler Pipeline: http://www.cellprofiler.org
+Version:5
+DateRevision:421
+GitHash:
+ModuleCount:20
+HasImagePlaneDetails:False
+
+Images:[module_num:1|svn_version:'Unknown'|variable_revision_number:2|show_window:False|notes:['To begin creating your project, use the Images module to compile a list of files and/or folders that you want to analyze. You can also specify a set of rules to include only the desired files in your selected folders.', '', 'Overall - segmentation, first LAP parameters, gap score, gap temporal, merge score are optimized']|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    :
+    Filter images?:Custom
+    Select the rule criteria:and (extension does istif)
+
+Metadata:[module_num:2|svn_version:'Unknown'|variable_revision_number:6|show_window:False|notes:['The Metadata module optionally allows you to extract information describing your images (i.e, metadata) which will be stored along with your measurements. This information can be contained in the file name and/or location, or in an external file.']|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Extract metadata?:Yes
+    Metadata data type:Text
+    Metadata types:{}
+    Extraction method count:1
+    Metadata extraction method:Extract from file/folder names
+    Metadata source:File name
+    Regular expression to extract from file name:^092921_MCC13_RFP_1_s(?P<Site>.*)_t(?P<Time>.*).TIF
+    Regular expression to extract from folder name:(?P<Date>[0-9]{4}_[0-9]{2}_[0-9]{2})$
+    Extract metadata from:All images
+    Select the filtering criteria:and (file does contain "")
+    Metadata file location:Elsewhere...|
+    Match file and image metadata:[]
+    Use case insensitive matching?:No
+    Metadata file name:None
+    Does cached metadata exist?:No
+
+NamesAndTypes:[module_num:3|svn_version:'Unknown'|variable_revision_number:8|show_window:False|notes:['The NamesAndTypes module allows you to assign a meaningful name to each image by which other modules will refer to it.']|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Assign a name to:All images
+    Select the image type:Grayscale image
+    Name to assign these images:Orig
+    Match metadata:[]
+    Image set matching method:Order
+    Set intensity range from:Image metadata
+    Assignments count:1
+    Single images count:0
+    Maximum intensity:255.0
+    Process as 3D?:No
+    Relative pixel spacing in X:1.0
+    Relative pixel spacing in Y:1.0
+    Relative pixel spacing in Z:1.0
+    Select the rule criteria:and (file does contain "")
+    Name to assign these images:DNA
+    Name to assign these objects:Cell
+    Select the image type:Grayscale image
+    Set intensity range from:Image metadata
+    Maximum intensity:255.0
+
+Groups:[module_num:4|svn_version:'Unknown'|variable_revision_number:2|show_window:False|notes:['The Groups module optionally allows you to split your list of images into image subsets (groups) which will be processed independently of each other. Examples of groupings include screening batches, microtiter plates, time-lapse movies, etc.']|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Do you want to group your images?:Yes
+    grouping metadata count:1
+    Metadata category:Site
+
+ImageMath:[module_num:5|svn_version:'Unknown'|variable_revision_number:5|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Operation:None
+    Raise the power of the result by:0.3
+    Multiply the result by:1.0
+    Add to result:0.0
+    Set values less than 0 equal to 0?:Yes
+    Set values greater than 1 equal to 1?:Yes
+    Replace invalid values with 0?:Yes
+    Ignore the image masks?:No
+    Name the output image:ImageAfterMath
+    Image or measurement?:Image
+    Select the first image:Orig
+    Multiply the first image by:1.0
+    Measurement:
+    Image or measurement?:Image
+    Select the second image:None
+    Multiply the second image by:1.0
+    Measurement:
+
+IdentifyPrimaryObjects:[module_num:6|svn_version:'Unknown'|variable_revision_number:15|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Select the input image:ImageAfterMath
+    Name the primary objects to be identified:IdentifyPrimaryObjects
+    Typical diameter of objects, in pixel units (Min,Max):15,45
+    Discard objects outside the diameter range?:No
+    Discard objects touching the border of the image?:No
+    Method to distinguish clumped objects:Shape
+    Method to draw dividing lines between clumped objects:Intensity
+    Size of smoothing filter:4
+    Suppress local maxima that are closer than this minimum allowed distance:11
+    Speed up by using lower-resolution image to find local maxima?:Yes
+    Fill holes in identified objects?:After both thresholding and declumping
+    Automatically calculate size of smoothing filter for declumping?:Yes
+    Automatically calculate minimum allowed distance between local maxima?:No
+    Handling of objects if excessive number of objects identified:Continue
+    Maximum number of objects:500
+    Use advanced settings?:Yes
+    Threshold setting version:12
+    Threshold strategy:Global
+    Thresholding method:Robust Background
+    Threshold smoothing scale:1
+    Threshold correction factor:1
+    Lower and upper bounds on threshold:0.0,1.0
+    Manual threshold:0.0
+    Select the measurement to threshold with:None
+    Two-class or three-class thresholding?:Two classes
+    Log transform before thresholding?:Yes
+    Assign pixels in the middle intensity class to the foreground or the background?:Background
+    Size of adaptive window:70
+    Lower outlier fraction:0.1
+    Upper outlier fraction:0
+    Averaging method:Median
+    Variance method:Standard deviation
+    # of deviations:1
+    Thresholding method:Otsu
+
+MeasureObjectSizeShape:[module_num:7|svn_version:'Unknown'|variable_revision_number:3|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Select object sets to measure:IdentifyPrimaryObjects
+    Calculate the Zernike features?:No
+    Calculate the advanced features?:No
+
+FilterObjects:[module_num:8|svn_version:'Unknown'|variable_revision_number:9|show_window:False|notes:['Increased compactness filter limit']|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Select the objects to filter:IdentifyPrimaryObjects
+    Name the output objects:FilterNuclei
+    Select the filtering mode:Measurements
+    Select the filtering method:Limits
+    Select the objects that contain the filtered objects:IdentifyPrimaryObjects
+    Select the location of the rules or classifier file:Elsewhere...|
+    Rules or classifier file name:rules.txt
+    Class number:1
+    Measurement count:2
+    Additional object count:0
+    Assign overlapping child to:Parent with most overlap
+    Keep removed objects as a seperate set?:No
+    Name the objects removed by the filter:RemovedObjects
+    Select the measurement to filter by:AreaShape_Area
+    Filter using a minimum measurement value?:Yes
+    Minimum value:90
+    Filter using a maximum measurement value?:No
+    Maximum value:1.0
+    Select the measurement to filter by:AreaShape_Compactness
+    Filter using a minimum measurement value?:No
+    Minimum value:0.0
+    Filter using a maximum measurement value?:Yes
+    Maximum value:3
+
+ExpandOrShrinkObjects:[module_num:9|svn_version:'Unknown'|variable_revision_number:2|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Select the input objects:FilterNuclei
+    Name the output objects:ShrunkenNuclei
+    Select the operation:Add partial dividing lines between objects
+    Number of pixels by which to expand or shrink:5
+    Fill holes in objects so that all objects shrink to a single point?:Yes
+
+Smooth:[module_num:10|svn_version:'Unknown'|variable_revision_number:2|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Select the input image:ImageAfterMath
+    Name the output image:FilteredImage
+    Select smoothing method:Median Filter
+    Calculate artifact diameter automatically?:No
+    Typical artifact diameter:5
+    Edge intensity difference:0.01
+    Clip intensities to 0 and 1?:Yes
+
+RescaleIntensity:[module_num:11|svn_version:'Unknown'|variable_revision_number:3|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Select the input image:FilteredImage
+    Name the output image:RescaleIntensity
+    Rescaling method:Stretch each image to use the full intensity range
+    Method to calculate the minimum intensity:Custom
+    Method to calculate the maximum intensity:Custom
+    Lower intensity limit for the input image:0.0
+    Upper intensity limit for the input image:1.0
+    Intensity range for the input image:0.0,1.0
+    Intensity range for the output image:0.0,1.0
+    Select image to match in maximum intensity:None
+    Divisor value:1.0
+    Divisor measurement:None
+
+IdentifySecondaryObjects:[module_num:12|svn_version:'Unknown'|variable_revision_number:10|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Select the input objects:ShrunkenNuclei
+    Name the objects to be identified:IdentifySecondaryObjects
+    Select the method to identify the secondary objects:Propagation
+    Select the input image:RescaleIntensity
+    Number of pixels by which to expand the primary objects:10
+    Regularization factor:0.03
+    Discard secondary objects touching the border of the image?:No
+    Discard the associated primary objects?:No
+    Name the new primary objects:FilteredNuclei
+    Fill holes in identified objects?:Yes
+    Threshold setting version:12
+    Threshold strategy:Global
+    Thresholding method:Minimum Cross-Entropy
+    Threshold smoothing scale:0
+    Threshold correction factor:0.8
+    Lower and upper bounds on threshold:0.28,1.0
+    Manual threshold:0.0
+    Select the measurement to threshold with:None
+    Two-class or three-class thresholding?:Three classes
+    Log transform before thresholding?:No
+    Assign pixels in the middle intensity class to the foreground or the background?:Foreground
+    Size of adaptive window:50
+    Lower outlier fraction:0.05
+    Upper outlier fraction:0
+    Averaging method:Median
+    Variance method:Standard deviation
+    # of deviations:2.0
+    Thresholding method:Minimum Cross-Entropy
+
+IdentifyTertiaryObjects:[module_num:13|svn_version:'Unknown'|variable_revision_number:3|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Select the larger identified objects:IdentifySecondaryObjects
+    Select the smaller identified objects:ShrunkenNuclei
+    Name the tertiary objects to be identified:Cytoplasm
+    Shrink smaller object prior to subtraction?:Yes
+
+MeasureObjectIntensity:[module_num:14|svn_version:'Unknown'|variable_revision_number:4|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Select images to measure:Orig
+    Select objects to measure:Cytoplasm, ShrunkenNuclei
+
+MeasureObjectSizeShape:[module_num:15|svn_version:'Unknown'|variable_revision_number:3|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Select object sets to measure:Cytoplasm, ShrunkenNuclei
+    Calculate the Zernike features?:No
+    Calculate the advanced features?:No
+
+SaveImages:[module_num:16|svn_version:'Unknown'|variable_revision_number:16|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Select the type of image to save:Image
+    Select the image to save:RescaleIntensity
+    Select method for constructing file names:From image filename
+    Select image name for file prefix:Orig
+    Enter single file name:s\g<Site>_
+    Number of digits:3
+    Append a suffix to the image file name?:No
+    Text to append to the image name:_QA_\g<Series>_\g<Time>
+    Saved file format:tiff
+    Output file location:Default Output Folder|Desktop/test/output
+    Image bit depth:8-bit integer
+    Overwrite existing files without warning?:Yes
+    When to save:Every cycle
+    Record the file and path information to the saved image?:No
+    Create subfolders in the output folder?:No
+    Base image folder:Elsewhere...|
+    How to save the series:T (Time)
+    Save with lossless compression?:Yes
+
+ConvertObjectsToImage:[module_num:17|svn_version:'Unknown'|variable_revision_number:1|show_window:True|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Select the input objects:ShrunkenNuclei
+    Name the output image:ShrunkenNuclei
+    Select the color format:uint16
+    Select the colormap:Default
+
+SaveImages:[module_num:18|svn_version:'Unknown'|variable_revision_number:16|show_window:True|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Select the type of image to save:Image
+    Select the image to save:ShrunkenNuclei
+    Select method for constructing file names:From image filename
+    Select image name for file prefix:Orig
+    Enter single file name:OrigBlue
+    Number of digits:4
+    Append a suffix to the image file name?:Yes
+    Text to append to the image name:-mask
+    Saved file format:tiff
+    Output file location:Default Output Folder|
+    Image bit depth:16-bit integer
+    Overwrite existing files without warning?:Yes
+    When to save:Every cycle
+    Record the file and path information to the saved image?:No
+    Create subfolders in the output folder?:No
+    Base image folder:Elsewhere...|
+    How to save the series:T (Time)
+    Save with lossless compression?:Yes
+
+ExportToSpreadsheet:[module_num:19|svn_version:'Unknown'|variable_revision_number:13|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Select the column delimiter:Comma (",")
+    Add image metadata columns to your object data file?:Yes
+    Add image file and folder names to your object data file?:Yes
+    Select the measurements to export:Yes
+    Calculate the per-image mean values for object measurements?:No
+    Calculate the per-image median values for object measurements?:No
+    Calculate the per-image standard deviation values for object measurements?:No
+    Output file location:Default Output Folder|Desktop/test/output
+    Create a GenePattern GCT file?:No
+    Select source of sample row name:Metadata
+    Select the image to use as the identifier:None
+    Select the metadata to use as the identifier:None
+    Export all measurement types?:No
+    Press button to select measurements:ShrunkenNuclei|AreaShape_Area,ShrunkenNuclei|AreaShape_Center_X,ShrunkenNuclei|AreaShape_Center_Y,ShrunkenNuclei|Children_Cytoplasm_Count,ShrunkenNuclei|Intensity_MeanIntensity_Orig,ShrunkenNuclei|Intensity_MedianIntensity_Orig,ShrunkenNuclei|Intensity_StdIntensity_Orig,ShrunkenNuclei|Intensity_MinIntensity_Orig,ShrunkenNuclei|Intensity_MaxIntensity_Orig,ShrunkenNuclei|Intensity_IntegratedIntensity_Orig,ShrunkenNuclei|Number_Object_Number,Cytoplasm|AreaShape_Center_Y,Cytoplasm|AreaShape_Center_X,Cytoplasm|AreaShape_Area,Cytoplasm|AreaShape_MajorAxisLength,Cytoplasm|Location_CenterMassIntensity_Z_Orig,Cytoplasm|Location_CenterMassIntensity_Y_Orig,Cytoplasm|Location_CenterMassIntensity_X_Orig,Cytoplasm|Location_Center_Y,Cytoplasm|Location_Center_X,Cytoplasm|Location_MaxIntensity_Z_Orig,Cytoplasm|Location_MaxIntensity_X_Orig,Cytoplasm|Location_MaxIntensity_Y_Orig,Cytoplasm|Intensity_IntegratedIntensity_Orig,Cytoplasm|Intensity_StdIntensity_Orig,Cytoplasm|Intensity_MaxIntensity_Orig,Cytoplasm|Intensity_MeanIntensity_Orig,Cytoplasm|Intensity_MedianIntensity_Orig,Cytoplasm|Intensity_MinIntensity_Orig,Cytoplasm|Parent_ShrunkenNuclei,Cytoplasm|Number_Object_Number
+    Representation of Nan/Inf:NaN
+    Add a prefix to file names?:Yes
+    Filename prefix:
+    Overwrite existing files without warning?:Yes
+    Data to export:ShrunkenNuclei
+    Combine these object measurements with those of the previous object?:No
+    File name:DATA.csv
+    Use the object name for the file name?:Yes
+    Data to export:Cytoplasm
+    Combine these object measurements with those of the previous object?:Yes
+    File name:DATA.csv
+    Use the object name for the file name?:Yes
+
+ExportToDatabase:[module_num:20|svn_version:'Unknown'|variable_revision_number:28|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:False|wants_pause:False]
+    Database type:SQLite
+    Database name:DefaultDB
+    Add a prefix to table names?:Yes
+    Table prefix:MCC13_Rupture_1
+    Output file location:Default Output Folder|Desktop/test/output
+    Create a CellProfiler Analyst properties file?:Yes
+    Database host:
+    Username:
+    Password:
+    Name the SQLite database file:MCC13_Rupture_1.db
+    Calculate the per-image mean values of object measurements?:Yes
+    Calculate the per-image median values of object measurements?:No
+    Calculate the per-image standard deviation values of object measurements?:No
+    Calculate the per-well mean values of object measurements?:No
+    Calculate the per-well median values of object measurements?:No
+    Calculate the per-well standard deviation values of object measurements?:No
+    Export measurements for all objects to the database?:All
+    Select the objects:
+    Maximum # of characters in a column name:64
+    Create one table per object, a single object table or a single object view?:Single object table
+    Enter an image url prepend if you plan to access your files via http:
+    Write image thumbnails directly to the database?:No
+    Select the images for which you want to save thumbnails:
+    Auto-scale thumbnail pixel intensities?:Yes
+    Select the plate type:None
+    Select the plate metadata:None
+    Select the well metadata:None
+    Include information for all images, using default values?:Yes
+    Properties image group count:1
+    Properties group field count:1
+    Properties filter field count:0
+    Workspace measurement count:1
+    Experiment name:MCC13_Rupture_Full
+    Which objects should be used for locations?:ShrunkenNuclei
+    Enter a phenotype class table name if using the Classifier tool in CellProfiler Analyst:rupture
+    Export object relationships?:No
+    Overwrite without warning?:Data and schema
+    Access CellProfiler Analyst images via URL?:No
+    Select the classification type:Object
+    Select an image to include:None
+    Use the image name for the display?:Yes
+    Image name:Channel1
+    Channel color:red
+    Do you want to add group fields?:No
+    Enter the name of the group:
+    Enter the per-image columns which define the group, separated by commas:ImageNumber, Image_Metadata_Plate, Image_Metadata_Well
+    Do you want to add filter fields?:No
+    Automatically create a filter for each plate?:No
+    Create a CellProfiler Analyst workspace file?:No
+    Select the measurement display tool:ScatterPlot
+    Type of measurement to plot on the X-axis:Image
+    Enter the object name:None
+    Select the X-axis measurement:None
+    Select the X-axis index:ImageNumber
+    Type of measurement to plot on the Y-axis:Image
+    Enter the object name:None
+    Select the Y-axis measurement:None
+    Select the Y-axis index:ImageNumber

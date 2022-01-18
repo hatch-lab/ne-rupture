@@ -11,6 +11,8 @@ ner annotate [folder]
     return
   fi
 
+  OLD_JAVA_HOME=$JAVA_HOME
+  export JAVA_HOME="/usr/local/opt/openjdk@11/libexec/openjdk.jdk/Contents/Home"
   source "${HATCH_LAB_NE_RUPTURE_TOOL_PATH}/.venv/bin/activate"
   abs_path="`realpath \"${2}\"`"
 
@@ -22,4 +24,5 @@ ner annotate [folder]
     echo "You may specify ner segment or ner annotate"
   fi
   deactivate
+  export JAVA_HOME="$OLD_JAVA_HOME"
 }

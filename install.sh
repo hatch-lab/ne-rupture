@@ -82,7 +82,7 @@ Installing Homebrew package manager
 printf '
 Installing software packages
 '
-brew install python3 git wget cairo coreutils
+brew install python@3.8 git wget cairo coreutils mysql java11
 
 # Install R and XQuartz
 install_package "R" ${R_package} ${R_sig}
@@ -106,8 +106,9 @@ else
   cd ne-rupture
 fi
 
-echo "export HATCH_LAB_NE_RUPTURE_TOOL_PATH=\"${HOME}/Documents/${d}ne-rupture\"" >> ~/.bashrc
-echo "source \"\${HATCH_LAB_NE_RUPTURE_TOOL_PATH}/bash_functions.sh\"" >> ~/.bashrc
+echo "export HATCH_LAB_NE_RUPTURE_TOOL_PATH=\"${HOME}/Documents/${d}ne-rupture\"" >> ~/.bash_profile
+echo "source \"\${HATCH_LAB_NE_RUPTURE_TOOL_PATH}/bash_functions.sh\"" >> ~/.bash_profile
+
 echo "export HATCH_LAB_NE_RUPTURE_TOOL_PATH=\"${HOME}/Documents/${d}ne-rupture\"" >> ~/.zshrc
 echo "source \"\${HATCH_LAB_NE_RUPTURE_TOOL_PATH}/bash_functions.sh\"" >> ~/.zshrc
 source ~/.zshrc

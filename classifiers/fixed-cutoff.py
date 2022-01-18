@@ -1,5 +1,23 @@
 # coding=utf-8
 
+"""
+Classifies particle events by using fixed thresholds
+
+Usage:
+  classify.py fixed-cutoff [options] [--] INPUT
+
+Arguments:
+  INPUT Path to the directory containing particle data
+
+Options:
+  -h, --help
+  -v, --version
+
+Output:
+  Generates graphs of each nucleus's predicted and actual events.
+  Generates annotated videos of each nucleus with either a predicted or a true event.
+"""
+
 import sys
 import os
 from pathlib import Path
@@ -12,13 +30,19 @@ import math
 import numpy as np
 import pandas as pd
 import json
-from multiprocessing import Pool, cpu_count
-from time import sleep
+from tqdm import tqdm
+
+from lib.summarize import get_cell_stats
 
 NEED_TIFFS = False
 SAVES_INTERMEDIATES = False
 NAME = "fixed-cutoff"
 CONF_PATH = (ROOT_PATH / ("classifiers/fixed-cutoff/conf.json")).resolve()
+
+def get_schema():
+  return {
+    'fixed-cutoff': lambda x: True
+  }
 
 def process_event_seeds(p_data, conf):
   """
@@ -247,41 +271,6 @@ def print_progress_bar(message, total, num_left):
   if num_left == 0:
     print()
 
-def apply_parallel(grouped, message,  fn, *args):
-  """
-  Function for parallelizing particle classification
-
-  Will take each DataFrame produced by grouping by particle_id
-  and pass that data to the provided function, along with the 
-  supplied arguments.
-
-  Arguments:
-    grouped list List of grouped particle data
-    message string The message to print alongside the loading bars
-    fn function The function called with a group as a parameter
-    args Arguments to pass through to fn
-
-  Returns:
-    Pandas DataFrame The re-assembled data.
-  """
-
-  total_groups = len(grouped)
-
-  with Pool(cpu_count()) as p:
-    groups = []
-    for name, group in grouped:
-      t = tuple([ group ]) + tuple(args)
-      groups.append(t)
-    rs = p.starmap_async(fn, groups)
-    total = rs._number_left
-
-    while not rs.ready():
-      print_progress_bar(message, total, rs._number_left)
-      sleep(2)
-
-  print_progress_bar(message, total, 0)
-  return pd.concat(rs.get(), sort=False)
-
 # def find_neighbor_births(n_data, data):
 #   data_set = n_data['data_set'].values[0]
 #   nearest_neighbor = n_data['nearest_neighbor'].values[0]
@@ -292,7 +281,7 @@ def apply_parallel(grouped, message,  fn, *args):
 
 #   return n_data
 
-def run(data, conf=False, fast=False):
+def run(data, tiff_path, conf=False, fast=False):
   if not conf:
     with CONF_PATH.open(mode='r') as file:
       conf = json.load(file)
@@ -311,9 +300,10 @@ def run(data, conf=False, fast=False):
   # p_data = seed_mitoses(p_data, conf) # Just skip for now
 
   if not fast:
-    data = apply_parallel(data.groupby([ 'data_set', 'particle_id' ]), "Classifying particles", process_event_seeds, conf)
+    tqdm.pandas(desc="Classifying events")
+    data = data.groupby([ 'data_set', 'particle_id' ]).progress_apply(process_event_seeds, conf=conf)
 
-  return data
+  return ( True, data )
 
 def get_event_summary(data, conf=False):
   """

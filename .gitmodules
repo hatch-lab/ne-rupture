@@ -1,6 +1,3 @@
 [submodule "external/aicspkg"]
 	path = external/aicspkg
 	url = https://github.com/AllenInstitute/aics-segmentation.git
-[submodule "external/centrosome"]
-	path = external/centrosome
-	url = https://github.com/CellProfiler/centrosome.git

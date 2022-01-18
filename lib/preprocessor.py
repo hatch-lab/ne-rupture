@@ -30,8 +30,8 @@ def base_transform(data, params):
   Return:
     pandas.DataFrame The modified data frame
   """
-  data_set = params['data_set']
-  frame_rate = params['frame_rate']
+  data_set = params['--data-set']
+  frame_rate = params['--frame-rate']
   frame_width = params['frame_width']
   frame_height = params['frame_height']
 
@@ -57,10 +57,14 @@ def base_transform(data, params):
 
   # Normalize median intensity by average particle intensity/frame
   data = data.groupby([ 'frame' ]).apply(normalize_intensity, 'median', 'median', 'normalized_median')
+  data = data.groupby([ 'frame' ]).apply(normalize_intensity, 'median', 'mean', 'normalized_mean')
   data = data.groupby([ 'frame' ]).apply(normalize_intensity, 'median', 'sum', 'normalized_sum')
+  data = data.groupby([ 'frame' ]).apply(normalize_intensity, 'median', 'cyto_mean', 'normalized_cyto_mean')
 
   data = scale(data, 'normalized_median', 'normalized_median')
+  data = scale(data, 'normalized_mean', 'normalized_mean')
   data = scale(data, 'normalized_sum', 'normalized_sum')
+  data = scale(data, 'normalized_cyto_mean', 'normalized_cyto_mean')
 
   # Scale area of each particle to be between 0 and 1 (relative to itself)
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(scale, 'area', 'scaled_area')
@@ -68,12 +72,16 @@ def base_transform(data, params):
   # Make intensity/sum/area stationary
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(make_stationary, 'scaled_area', 'stationary_area')
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(make_stationary, 'normalized_median', 'stationary_median')
+  data = data.groupby([ 'data_set', 'particle_id' ]).apply(make_stationary, 'normalized_mean', 'stationary_mean')
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(make_stationary, 'normalized_sum', 'stationary_sum')
+  data = data.groupby([ 'data_set', 'particle_id' ]).apply(make_stationary, 'normalized_cyto_mean', 'stationary_cyto_mean')
 
   # Interpolate with cubic splines/find derivatives
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'scaled_area', 'area')
-  data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'normalized_median', 'median')
-  data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'normalized_sum', 'sum')
+  data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'stationary_median', 'median')
+  data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'stationary_mean', 'mean')
+  data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'stationary_cyto_mean', 'cyto_mean')
+  data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'stationary_sum', 'sum')
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'x', 'x')
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'y', 'y')
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(find_speed)
@@ -147,7 +155,7 @@ def normalize_intensity(group, normalize_by, col, new_col):
 
 def make_stationary(group, col, new_col):
   """
-  If a [col] is not stationary, apply 1st order difference
+  Apply 1st order difference to [col]
 
   Arguments:
     group Pandas DataFrame of each particle
@@ -160,8 +168,8 @@ def make_stationary(group, col, new_col):
   frame_rate = group['frame_rate'].iloc[0]
   smoothed_mean = sliding_average(group[col], 3600, 1800, frame_rate)
   group[new_col] = group[col] - smoothed_mean
-  group.loc[(group[new_col] == group[col]), new_col] = np.nan
-  
+  # group.loc[(group[new_col] == group[col]), new_col] = np.nan
+
   # Move mean value to 0
   group[new_col] = group[new_col] - np.mean(group[new_col])
 
