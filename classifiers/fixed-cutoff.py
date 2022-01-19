@@ -12,7 +12,7 @@ Arguments:
 Options:
   -h, --help
   -v, --version
-
+  
 Output:
   Generates graphs of each nucleus's predicted and actual events.
   Generates annotated videos of each nucleus with either a predicted or a true event.
@@ -81,19 +81,10 @@ def seed_events(data, conf):
   Returns:
     Panda DataFrame The modified particle data
   """
-
-  # Filter out particles that are too near each other
-  data = data.groupby([ 'data_set', 'particle_id' ]).filter(
-    lambda x: np.min(x['nearest_neighbor_distance']) >= 50*x['x_conversion'].iloc[0]
-  )
-
-  # Filter out particles that are too jumpy
-  data = data.groupby([ 'data_set', 'particle_id' ]).filter(lambda x: np.all(x['speed'] <= 0.05)) # Faster than 0.05 µm/3 min
-
   data.sort_values([ 'data_set', 'particle_id', 'frame' ], inplace=True)
   data.reset_index(inplace=True, drop=True)
 
-  r_idx = ((data['median_derivative'] <= conf['median_derivative_cutoff']) & (data['stationary_median'] <= conf['median_cutoff']))
+  r_idx = ((data['stationary_mean'] <= conf['mean_cutoff']) & (data['stationary_cyto_mean'] >= conf['cyto_mean_cutoff']))
   data.loc[r_idx, 'event'] = 'R'
 
   return data
@@ -255,22 +246,6 @@ def sliding_average(data, window, step, frame_rate):
 
   return result
 
-def print_progress_bar(message, total, num_left):
-  """
-  Prints a nice progress bar onto the terminal
-
-  Arguments:
-    message string The message to print alongside the bar
-    total int The number of child processes to run
-    num_left int The number of child processes left to run
-  """
-  progress = int(30*(total-num_left)//total)
-  bar = "#" * progress + ' ' * (30 - progress)
-  print("\r{} |{}|".format(message, bar), end="\r")
-
-  if num_left == 0:
-    print()
-
 # def find_neighbor_births(n_data, data):
 #   data_set = n_data['data_set'].values[0]
 #   nearest_neighbor = n_data['nearest_neighbor'].values[0]
@@ -287,11 +262,6 @@ def run(data, tiff_path, conf=False, fast=False):
       conf = json.load(file)
 
   orig_data = data.copy()
-
-  # Find nearest neighbor distances
-  # if not fast:
-  #   data = apply_parallel(data.groupby([ 'data_set', 'frame' ]), "Finding nearest neighbors", find_nearest_neighbor_distances)
-  #   data = apply_parallel(data.groupby([ 'data_set', 'nearest_neighbor']), "Finding nearest neighbor births", find_neighbor_births, orig_data)
 
   # Classify
   data.loc[:,'event'] = 'N'

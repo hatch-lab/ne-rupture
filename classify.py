@@ -22,6 +22,7 @@ Options:
   --skip-graphs  Whether to skip producing graphs or videos
   --img-dir=<string>  [default: images] The subdirectory that contains TIFF images of each frame, for outputting videos.
   --conf=<string>  Override configuration options in conf.json with a JSON string.
+  --draw-tracks  [Default: False] Whether to overlay tracks on the annotated movies
 
 Output:
   Generates graphs of each nucleus's predicted and actual events.
@@ -39,6 +40,7 @@ sys.path.append(str(ROOT_PATH))
 from docopt import docopt
 from lib.version import get_version
 from lib.output import colorize
+import lib.video as hatchvid
 
 import re
 
@@ -78,6 +80,7 @@ schema = {
   '--output-dir': len,
   '--input-dir': len,
   Optional('--skip-graphs'): bool,
+  Optional('--draw-tracks'): bool,
   '--img-dir': len,
   '--conf': Or(None, len),
   '--help': Or(None, bool),
@@ -106,6 +109,7 @@ output_name = arguments['--output-name']
 event_summary_name = arguments['--event-summary-name']
 cell_summary_name = arguments['--cell-summary-name']
 skip_graphs = True if arguments['--skip-graphs'] else False
+draw_tracks = True if arguments['--draw-tracks'] else False
 conf = json.loads(arguments['--conf']) if arguments['--conf'] else False
 
 start_over = True if '--start-over' in arguments and arguments['--start-over'] else False
@@ -139,7 +143,6 @@ if done and intermediate_path.exists():
   # Clear the intermediate file
   intermediate_path.unlink()
 
-
 if not done:
   print(colorize("magenta", "The classifier did not finish or there was an error."))
   exit(0)
@@ -160,48 +163,8 @@ if not skip_graphs:
   video_path = output_path / "videos"
   video_path.mkdir(mode=0o755, parents=True, exist_ok=True)
 
-  for data_set in data['data_set'].unique():
-    ds_data = data[( (data['data_set'] == data_set) )]
-    if ds_data.shape[0] <= 0:
-      continue
+  data.loc[:,'frame_path'] = data.apply(lambda x:
+    str( (tiff_path / (x.data_set + '/' + str(x.frame).zfill(4) + '.tif')).resolve() ), axis=1
+  )
 
-    ds_data = ds_data[[ 'data_set', 'particle_id', 'frame', 'time', 'x_px', 'y_px', 'event' ]]
-    ds_data.sort_values('frame')
-
-    ds_data['frame_path'] = ds_data.apply(lambda x: str( (tiff_path / (data_set + '/' + str(x.frame).zfill(4) + '.tif')).resolve() ), axis=1)
-    
-    field_video_path = video_path / (data_set + '.mp4')
-    hatchvid.make_video(data, str(field_video_path), movie_name = data_set)
-
-    for particle_id in ds_data['particle_id'].unique():
-      p_data = ds_data[(ds_data['particle_id'])]
-      if p_data.shape[0] <= 0:
-        continue
-
-      (video_path / data_set).mkdir(mode=0o755, parents=True, exist_ok=True)
-
-      r_graph_gen_path = (ROOT_PATH / ("lib/R/make-single-cell-graph.R")).resolve()
-      graph_path = video_path / (data_set + "/" + particle_id + ".tif")
-      # Make our graph
-      cmd = [
-        "Rscript",
-        "--vanilla",
-        str(r_graph_gen_path),
-        str(output_file_path),
-        str(graph_path),
-        data_set,
-        particle_id,
-        "300"
-      ]
-      subprocess.call(cmd)
-
-      data['graph_path'] = str(graph_path)
-
-      cell_video_path = video_path / (data_set + "/" + particle_id + ".mp4")
-
-      hatchvid.make_video(data, str(cell_video_path), crop=( 100, 100 ), scale=3.0, movie_name = data_set + "/" + particle_id)
-
-
-
-
-
+  hatchvid.make_videos(data, video_path, draw_tracks=draw_tracks)

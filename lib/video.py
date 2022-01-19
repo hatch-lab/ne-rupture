@@ -107,6 +107,51 @@ def crop_frame(frame, x, y, width, height, is_color=False):
 
   return frame
 
+def make_videos(data, output_path, annotate=True, draw_tracks=False, codec='mp4v'):
+  for data_set in data['data_set'].unique():
+    ds_data = data[( (data['data_set'] == data_set) )].copy()
+    if ds_data.shape[0] <= 0:
+      continue
+
+    ds_data = ds_data[[ 'data_set', 'particle_id', 'frame', 'time', 'x_px', 'y_px', 'event' ]]
+    ds_data.sort_values('frame')
+
+    ds_data.loc[:,'frame_path'] = ds_data.apply(lambda x: str( (tiff_path / (data_set + '/' + str(x.frame).zfill(4) + '.tif')).resolve() ), axis=1)
+    
+    field_video_path = output_path / (data_set + '.mp4')
+    make_video(ds_data, str(field_video_path), movie_name = data_set, annotate=annotate, draw_tracks=draw_tracks, codec=codec)
+
+    for particle_id in ds_data['particle_id'].unique():
+      p_data = ds_data[(ds_data['particle_id'] == particle_id)].copy()
+      if p_data.shape[0] <= 0:
+        continue
+
+      (output_path / data_set).mkdir(mode=0o755, parents=True, exist_ok=True)
+
+      r_graph_gen_path = (ROOT_PATH / ("lib/R/make-single-cell-graph.R")).resolve()
+      graph_path = output_path / (data_set + "/" + particle_id + ".tif")
+      # Make our graph
+      cmd = [
+        "Rscript",
+        "--vanilla",
+        str(r_graph_gen_path),
+        str(output_file_path),
+        str(graph_path),
+        data_set,
+        particle_id,
+        "300"
+      ]
+      subprocess.call(cmd)
+
+      p_data.loc[:,'graph_path'] = str(graph_path)
+
+      cell_video_path = output_path / (data_set + "/" + particle_id + ".mp4")
+
+      make_video(p_data, str(cell_video_path), crop=( 100, 100 ), scale=3.0, movie_name = data_set + "/" + particle_id, annotate=annotate, draw_tracks=draw_tracks, codec=codec)
+
+      if graph_path.exists():
+        graph_path.unlink()
+
 def append_graph(frame, graph, this_frame_i, start_frame_i, end_frame_i):
   # Draw a line on the graph
   gc = np.copy(graph)
@@ -144,7 +189,7 @@ def make_video(data, output_file_path, annotate=True, draw_tracks=False, crop=Fa
   zero_frame = zero_frame.astype('uint8')
 
   fourcc = cv2.VideoWriter_fourcc(*codec)
-  writer = cv2.VideoWriter(output_file_path, fourcc, 10, (movie_width, movie_height), True)
+  writer = cv2.VideoWriter(str(output_file_path), fourcc, 10, (movie_width, movie_height), True)
 
   if draw_tracks:
     track_frame = cv2.cvtColor(zero_frame, cv2.COLOR_GRAY2BGR)
@@ -194,7 +239,7 @@ def make_video(data, output_file_path, annotate=True, draw_tracks=False, crop=Fa
             particle_id = row['particle_id']
             x = row['x_px']
             y = row['y_px']
-            event = row['event']
+            event = row['event'] if 'event' in row else 'N'
 
             # Add particle_id
             adj_circle_radius = int(round(CIRCLE_RADIUS))

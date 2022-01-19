@@ -68,16 +68,19 @@ def base_transform(data, params):
 
   # Scale area of each particle to be between 0 and 1 (relative to itself)
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(scale, 'area', 'scaled_area')
+  data = data.groupby([ 'data_set', 'particle_id' ]).apply(scale, 'cyto_area', 'scaled_cyto_area')
 
   # Make intensity/sum/area stationary
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(make_stationary, 'scaled_area', 'stationary_area')
+  data = data.groupby([ 'data_set', 'particle_id' ]).apply(make_stationary, 'scaled_cyto_area', 'stationary_cyto_area')
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(make_stationary, 'normalized_median', 'stationary_median')
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(make_stationary, 'normalized_mean', 'stationary_mean')
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(make_stationary, 'normalized_sum', 'stationary_sum')
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(make_stationary, 'normalized_cyto_mean', 'stationary_cyto_mean')
 
   # Interpolate with cubic splines/find derivatives
-  data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'scaled_area', 'area')
+  data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'stationary_area', 'area')
+  data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'stationary_cyto_area', 'cyto_area')
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'stationary_median', 'median')
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'stationary_mean', 'mean')
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'stationary_cyto_mean', 'cyto_mean')

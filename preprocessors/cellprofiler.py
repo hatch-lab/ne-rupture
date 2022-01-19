@@ -27,8 +27,6 @@ sys.path.append(str(ROOT_PATH / "preprocessors"))
 
 from docopt import docopt
 from lib.output import colorize
-from lib.preprocessor import base_transform
-from lib.tracks import make_tracks
 
 from errors.NoImagesFound import NoImagesFound
 
@@ -283,31 +281,9 @@ def process_data(data_path, params):
   data['x_conversion'] = pixel_size
   data['y_conversion'] = pixel_size
 
-  # Assign particles to tracks
-  print("Building tracks...")
-  frames = sorted(data['frame'].unique())
-  data['orig_particle_id'] = data['particle_id']
-  
-  data['min_frame'] = data['frame']
-  for i in tqdm(frames[:-1], unit=" frames"):
-    data = make_tracks(data, i, 10, 3)
-  data.drop_duplicates(subset=[ 'particle_id', 'frame' ], inplace=True)
-  data.drop('min_frame', axis='columns', inplace=True)
-
-  # # "Fill in" gaps where we lost tracking
-  # data.sort_values(by=[ 'particle_id', 'frame' ], inplace=True)
-  # data['track_id'] = 0
-  # data = data.groupby([ 'particle_id' ]).apply(id_track)
-  # missing_particle_ids = data.loc[( data['track_id'] > 0 ), 'particle_id'].unique()
-
-  params['frame_width'] = frame_shape[1]
-  params['frame_height'] = frame_shape[0]
-  data = base_transform(data, params)
-
   # Clean up
   (raw_path / "file_list.txt").unlink()
   (tiff_path / "ShrunkenNuclei.csv").unlink()
-
 
   return data
 

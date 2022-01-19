@@ -20,7 +20,7 @@ Options:
   --data-set=<string>  The unique identifier for this data set. If none is supplied, the base file name of each TIFF will be used.
   --pixel-size=<float>  [default: 1] Pixels per micron. If 0, will attempt to detect automatically.
   --frame-rate=<int>  [default: 180] The seconds that elapse between frames
-  --keep-imgs  Whether to store an image of each particle for each frame
+  --remake-tracks  [default: False] Whether to skip processing all data from scratch and just rebuild tracks/modify filters
 
 Output:
   A CSV file with processed data
@@ -38,6 +38,11 @@ sys.path.append(str(ROOT_PATH))
 from docopt import docopt
 from lib.version import get_version
 from lib.output import colorize
+from lib.preprocessor import base_transform
+from lib.tracks import make_tracks
+
+import lib.video as hatchvid
+import pandas as pd
 
 import re
 
@@ -70,8 +75,8 @@ schema = {
   '--data-set': Or(None, len),
   '--pixel-size': And(Use(float), lambda n: n >= 0, error='--pixel-size must be > 0'),
   '--frame-rate': And(Use(int), lambda n: n > 0),
-  Optional('--keep-imgs'): bool,
   '--help': Or(None, bool),
+  Optional('--remake-tracks'): bool,
   '--version': Or(None, bool),
   Optional('<args>'): lambda n: True,
   Optional('--'): lambda n: True
@@ -99,14 +104,47 @@ arguments['data_path'] = data_path
 arguments['tiff_path'] = tiff_path
 
 arguments['--pixel-size'] = arguments['--pixel-size'] if arguments['--pixel-size'] > 0 else None
-arguments['--keep-imgs'] = bool(arguments['--keep-imgs']) if arguments['--keep-imgs'] else False
 
 ### Preprocess our data
-data = processor.process_data(data_path, arguments)
-
 output_path.mkdir(exist_ok=True)
 output_file_path = (output_path / (arguments['--output-name'])).resolve()
+if not arguments['--remake-tracks'] or not output_file_path.exists() or not output_file_path.is_file():
+  data = processor.process_data(data_path, arguments)
+  data.to_csv(str(output_file_path), header=True, encoding='utf-8', index=None)
+else:
+  data = pd.read_csv(str(output_file_path, dtype={ 'particle_id': str, 'orig_particle_id': str }))
+  data['particle_id'] = data['orig_particle_id']
 
-data.to_csv(str(output_file_path), header=True, encoding='utf-8', index=None)
+### Launch GUI for assigning tracks and filtering
 
-exit()
+# Assign particles to tracks
+print("Building tracks...")
+frames = sorted(data['frame'].unique())
+data['orig_particle_id'] = data['particle_id']
+
+data['min_frame'] = data['frame']
+for i in tqdm(frames[:-1], unit=" frames"):
+  data = make_tracks(data, i, 10, 3)
+data.drop_duplicates(subset=[ 'particle_id', 'frame' ], inplace=True)
+data.drop('min_frame', axis='columns', inplace=True)
+
+# # "Fill in" gaps where we lost tracking
+# data.sort_values(by=[ 'particle_id', 'frame' ], inplace=True)
+# data['track_id'] = 0
+# data = data.groupby([ 'particle_id' ]).apply(id_track)
+# missing_particle_ids = data.loc[( data['track_id'] > 0 ), 'particle_id'].unique()
+
+params['frame_width'] = frame_shape[1]
+params['frame_height'] = frame_shape[0]
+data = base_transform(data, params)
+data = pd.read_csv(str(output_file_path), dtype={ 'particle_id': str })
+
+### Set up filtering
+video_path = output_path / "videos"
+video_path.mkdir(mode=0o755, parents=True, exist_ok=True)
+
+data.loc[:,'frame_path'] = data.apply(lambda x: 
+  str( (tiff_path / (str(x.frame).zfill(4) + '.tif')).resolve() ), axis=1
+)
+data_set = data['data_set'].unique()[0]
+hatchvid.make_video(data, video_path / (data_set + ".mp4"), annotate=True, draw_tracks=True, movie_name=data_set)
