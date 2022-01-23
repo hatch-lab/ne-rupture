@@ -10,6 +10,12 @@ import numpy as np
 import pandas as pd
 from scipy import interpolate
 from scipy import spatial
+import tifffile
+
+sys.path.append(str(ROOT_PATH / ("external/tracking/")))
+from tracker.extract_data import get_img_files, get_indices_pandas
+from tracker.export import ExportResults
+from tracker.tracking import TrackingConfig, MultiCellTracker
 
 def base_transform(data, params):
   """
@@ -251,3 +257,42 @@ def find_nearest_neighbor_distances(f_data):
   f_data['nearest_neighbor_distance'] = distances
 
   return f_data
+
+def make_tracks(tiff_path, output_path, delta_t=3, default_roi_size=2):
+  img_files = get_img_files(tiff_path)
+  mask_files = get_img_files(tiff_path / "masks")
+
+  # set roi size
+  # assume img shape z,x,y
+  dummy = np.squeeze(tifffile.imread(mask_files[max(mask_files.keys())]))
+  img_shape = dummy.shape
+  masks = get_indices_pandas(tifffile.imread(mask_files[max(mask_files.keys())]).squeeze())
+  m_shape = np.stack(masks.apply(lambda x: np.max(np.array(x), axis=-1) - np.min(np.array(x), axis=-1) +1))
+
+  if len(img_shape) == 2:
+    if len(masks) > 10:
+      m_size = np.median(np.stack(m_shape)).astype(int)
+
+      roi_size = tuple([m_size*default_roi_size, m_size*default_roi_size])
+    else:
+      roi_size = tuple((np.array(dummy.shape) // 10).astype(int))
+  else:
+    roi_size = tuple((np.median(np.stack(m_shape), axis=0) * default_roi_size).astype(int))
+
+  config = TrackingConfig(img_files, mask_files, roi_size, delta_t=delta_t, cut_off_distance=None)
+  tracker = MultiCellTracker(config)
+  tracks = tracker()
+
+  mask_shape = tifffile.imread(mask_files[max(mask_files.keys())]).shape
+  exporter = ExportResults()
+  exporter(tracks, output_path, mask_shape, time_steps=sorted(img_files.keys()))
+
+  # Standardize the file names
+  track_files = output_path.glob("*.tif")
+  for track_file in track_files:
+    num = int(track_file.stem.replace("mask", ""))
+    track_file.rename((output_path / (str(num).zfill(4) + ".tif")))
+
+def show_tracks(data, tiff_path, delta_t, default_roi_size):
+
+  return (data, delta_t, default_roi_size)

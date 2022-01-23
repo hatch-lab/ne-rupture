@@ -12,7 +12,8 @@ Arguments:
 Options:
   -h, --help
   -v, --version
-  --pipeline-path=<string>  [default: preprocessors/cellprofiler/default.cppipe] The CellProfiler pipelline to use
+  --segment-pipeline=<string>  [default: preprocessors/cellprofiler/segment.cppipe] The CellProfiler pipelline to use
+  --features-pipeline=<string>  [default: preprocessors/cellprofiler/extract.cppipe] The CellProfiler pipelline to use
 """
 
 import sys
@@ -36,7 +37,8 @@ import subprocess
 
 import tifffile
 from skimage import filters, morphology
-import scipy 
+import scipy
+import cv2
 
 from tqdm import tqdm
 from yaspin import yaspin
@@ -50,7 +52,8 @@ NAME      = "cellprofiler"
 def get_schema():
   return {
   'cellprofiler': lambda x: True,
-    '--pipeline-path': Or(None, lambda n: (ROOT_PATH / n).is_file(), error='That pipeline does not exist')
+    '--segment-pipeline': Or(None, lambda n: (ROOT_PATH / n).is_file(), error='That pipeline does not exist'),
+    '--features-pipeline': Or(None, lambda n: (ROOT_PATH / n).is_file(), error='That pipeline does not exist')
   }
 
 def get_default_data_path(input_path):
@@ -65,33 +68,35 @@ def get_default_data_path(input_path):
   """
   return input_path / "images/raw"
 
-def process_data(data_path, params):
+def segment(data_path, tiff_path, mask_dir="masks", extracted_dir="extracted", pixel_size=None, channel=1, params={}):
   """
-  Process raw data, segment it, and extract features
+  Given a set of images, segment them and save the masks and processed images
+
+  Input images can be multi-page TIFFs. They will be extracted into the singletons
+  directory.
 
   Arguments:
-    data_path str The path to raw data
-    params dict A dictionary of parameters
+    data_path Path The path to the raw images
+    tiff_path Path The root path where to save processed images and masks
+    mask_dir str The subdirectory in tiff_path to save masks
+    extracted_dir str The subdirectory in tiff_path to save raw images
+    pixel_size float|None How many microns in a mixel
+    channel int Which channel to extract
+    params dict Other params passed by preprocess
 
   Return:
-    pandas.DataFrame The extracted features for each cell
+    Information about the images
   """
-
-  data_set = params['--data-set']
-  input_path = params['input_path']
-  channel = params['--channel']
-  pixel_size = params['--pixel-size']
-  tiff_path = params['tiff_path']
-  pipeline_path = Path(params['--pipeline-path']).resolve() if params['--pipeline-path'] is not None else ROOT_PATH / ('preprocessors/cellprofiler/default.cppipeline')
-  keep_imgs = params['--keep-imgs']
 
   tiff_path.mkdir(mode=0o755, parents=True, exist_ok=True)
   
-  raw_path = tiff_path / "singletons"
-  raw_path.mkdir(mode=0o755, parents=True, exist_ok=True)
+  extracted_path = tiff_path / extracted_dir
+  extracted_path.mkdir(mode=0o755, parents=True, exist_ok=True)
 
-  mask_path = tiff_path / "masks"
+  mask_path = tiff_path / mask_dir
   mask_path.mkdir(mode=0o755, parents=True, exist_ok=True)
+
+  pipeline_path = Path(params['--segment-pipeline']).resolve() if params['--segment-pipeline'] is not None else ROOT_PATH / ('preprocessors/cellprofiler/segment.cppipeline')
 
   # Get TIFF stacks
   files = list(data_path.glob("*.tif"))
@@ -141,26 +146,26 @@ def process_data(data_path, params):
             frame_shape = img.shape
 
           file_name = str(frame_i).zfill(4) + ".tif"
-          tifffile.TiffWriter(str(raw_path / file_name)).save(img, resolution=(pixel_size, pixel_size, None))
+          tifffile.TiffWriter(str(extracted_path / file_name)).save(img, resolution=(pixel_size, pixel_size, None))
           frame_i += 1
     spinner.write("Found " + str(frame_i-1) + " images")
     spinner.ok("✅")
 
-  raw_files = raw_path.glob("*.tif")
+  raw_files = extracted_path.glob("*.tif")
   raw_files = list(filter(lambda x: x.name[:2] != "._", raw_files))
   raw_files = [ str(x) + "\n" for x in raw_files ]
   raw_files.sort(key=lambda x: str(len(x)) + x)
-  with open(str(raw_path / "file_list.txt"), "w") as f:
+  with open(str(extracted_path / "file_list.txt"), "w") as f:
     f.writelines(raw_files)
 
-  print("Segmenting with CellProfiler")
+  print("Segmenting with CellProfiler...")
   cmd = [
     'cellprofiler',
     '-p',
     str(pipeline_path),
     '-c',
     '-r',
-    '--file-list=' + str(raw_path / "file_list.txt"),
+    '--file-list=' + str(extracted_path / "file_list.txt"),
     '-o',
     str(tiff_path)
   ]
@@ -180,14 +185,70 @@ def process_data(data_path, params):
     new_name = file.name.replace(".tiff", ".tif")
     file.rename((tiff_path / new_name))
 
-  cp_data = pd.read_csv(str(tiff_path / "ShrunkenNuclei.csv"), header=None)
+  return {
+    'frame_shape': frame_shape,
+    'num_frames': frame_i
+  }
+
+def extract_features(tiff_path, tracks_dir="tracks", cyto_dir="cyto_tracks", pixel_size=1.0, params={}):
+  """
+  Extract features from segmented masks that have already been assigned to tracks
+
+  Arguments:
+    tiff_path Path The path to the folder that holds processed images
+    tracks_dir str The subdir in tiff_path that holds track masks
+    cyto_dir str The subdir in tiff_path where cytoplasm masks should be exposrted to
+    pixel_size float The size of pixels
+    params dict A dictionary of parameters
+
+  Return:
+    pandas.DataFrame The extracted features for each cell
+  """
+  tracks_path = (tiff_path / tracks_dir).resolve()
+  tracks_path.mkdir(exist_ok=True, mode=0o755)
+
+  cyto_tracks_path = (tiff_path / cyto_dir).resolve()
+  cyto_tracks_path.mkdir(exist_ok=True, mode=0o755)
+
+  pipeline_path = Path(params['--features-pipeline']).resolve() if params['--features-pipeline'] is not None else ROOT_PATH / ('preprocessors/cellprofiler/extract.cppipeline')
+  
+  processed_files = tiff_path.glob("*.tif")
+  track_masks = tracks_path.glob("*.tif")
+
+  all_files = list(processed_files) + list(track_masks)
+  all_files = list(filter(lambda x: x.name[:2] != "._", all_files))
+  all_files = [ str(x) + "\n" for x in all_files ]
+  all_files.sort(key=lambda x: str(len(x)) + x)
+
+  with open(str(cyto_tracks_path / "file_list.txt"), "w") as f:
+    f.writelines(all_files)
+
+  print("Extracting features with CellProfiler...")
+  cmd = [
+    'cellprofiler',
+    '-p',
+    str(pipeline_path),
+    '-c',
+    '-r',
+    '--file-list=' + str(cyto_tracks_path / "file_list.txt"),
+    '-o',
+    str(cyto_tracks_path)
+  ]
+  subprocess.call(cmd)
+
+  # CellProfiler saves masks as .tiff
+  # Let's change to .tif
+  mask_files = cyto_tracks_path.glob("*-cyto-mask.tiff")
+  for mask_file in mask_files:
+    new_name = mask_file.name.replace("-cyto-mask.tiff", ".tif")
+    mask_file.rename((cyto_tracks_path / new_name))
+
+  cp_data = pd.read_csv(str(cyto_tracks_path / "ShrunkenNuclei.csv"), header=None)
   categories = cp_data.iloc[0]
   headers = cp_data.iloc[1]
   cp_data = cp_data[2:]
 
   data = {
-    'particle_id': [],
-    'mask_id': [],
     'frame': [],
 
     'x': [],
@@ -211,8 +272,7 @@ def process_data(data_path, params):
   }
 
   cp_data_2_data = pd.DataFrame([
-    [ 'particle_id', 'ShrunkenNuclei', 'ObjectNumber' ],
-    [ 'frame', 'Image', 'ImageNumber' ],
+    [ 'frame', 'Image', 'FileName_Orig' ],
 
     [ 'x', 'ShrunkenNuclei', 'AreaShape_Center_X' ],
     [ 'y', 'ShrunkenNuclei', 'AreaShape_Center_Y' ],
@@ -240,50 +300,69 @@ def process_data(data_path, params):
       col = col.iloc[0]
       data[col] = cp_data.iloc[:,i]
 
-  data['mask_id'] = list(map(int, data['particle_id']))
-  data['particle_id'] = list(map(lambda x, y: str(x) + "." + str(y), data['frame'], data['particle_id']))
-  data['x'] = list(map(float, data['x']))
-  data['y'] = list(map(float, data['y']))
-  data['x_px'] = list(map(int, data['x']))
-  data['y_px'] = list(map(int, data['y']))
-  data['area'] = list(map(float, data['area']))
-  data['mean'] = list(map(float, data['mean']))
-  data['median'] = list(map(float, data['median']))
-  data['min'] = list(map(float, data['min']))
-  data['max'] = list(map(float, data['max']))
-  data['sum'] = list(map(float, data['sum']))
-  data['cyto_area'] = list(map(float, data['cyto_area']))
-  data['cyto_mean'] = list(map(float, data['cyto_mean']))
-  data['cyto_median'] = list(map(float, data['cyto_median']))
-  data['cyto_min'] = list(map(float, data['cyto_min']))
-  data['cyto_max'] = list(map(float, data['cyto_max']))
-  data['cyto_sum'] = list(map(float, data['cyto_sum']))
+  data['frame'] = [ int(x.replace(".tif", "")) for x in data['frame'] ]
+  data['x_px'] = [ int(float(x)) if not pd.isna(float(x)) else np.nan for x in data['x'] ]
+  data['y_px'] = [ int(float(x)) if not pd.isna(float(x)) else np.nan for x in data['y'] ]
+  data['x'] = [ float(x)*pixel_size for x in data['x'] ]
+  data['y'] = [ float(x)*pixel_size for x in data['y'] ]
+  data['x_conversion'] = [ pixel_size ]*len(data['x'])
+  data['y_conversion'] = [ pixel_size ]*len(data['y'])
+  data['area'] = [ float(x)*(pixel_size**2) for x in data['area'] ]
+  data['mean'] = [ float(x) for x in data['mean'] ]
+  data['median'] = [ float(x) for x in data['median'] ]
+  data['min'] = [ float(x) for x in data['min'] ]
+  data['max'] = [ float(x) for x in data['max'] ]
+  data['sum'] = [ float(x) for x in data['sum'] ]
+  data['cyto_area'] = [ float(x)*(pixel_size**2) for x in data['cyto_area'] ]
+  data['cyto_mean'] = [ float(x) for x in data['cyto_mean'] ]
+  data['cyto_median'] = [ float(x) for x in data['cyto_median'] ]
+  data['cyto_min'] = [ float(x) for x in data['cyto_min'] ]
+  data['cyto_max'] = [ float(x) for x in data['cyto_max'] ]
+  data['cyto_sum'] = [ float(x) for x in data['cyto_sum'] ]
+
+  if pixel_size == 1:
+    data['unit_conversion'] = [ 'px' ]*len(data['x'])
+  else:
+    data['unit_conversion'] = [ 'um/px' ]*len(data['x'])
 
   data = pd.DataFrame(data)
+  data.reset_index(inplace=True, drop=True)
+
+  # Y'all, this is the dumbest thing
+  # CellProfiler will not give me the object IDs
+  # Even if I just ask for the pixel value of the mask
+  # it rescales as val/65536. I can't just multiply it
+  # back because of float conversions introducing errors
+  particle_ids = [0]*data.shape[0]
+
+  for frame_idx in data['frame'].unique():
+    frame_file_name = str(frame_idx).zfill(4) + '.tif'
+    frame = cv2.imread(str(tracks_path / frame_file_name), cv2.IMREAD_ANYDEPTH)
+
+    f_data = data[(data['frame'] == frame_idx)]
+    for row in f_data.itertuples():
+      idx = row.Index
+      if pd.isna(row.x_px) or pd.isna(row.y_px):
+        continue
+      x = int(row.x_px)
+      y = int(row.y_px)
+      particle_ids[idx] = str(int(frame[y][x]))
+
+  data['particle_id'] = particle_ids
+  data['mask_id'] = data['particle_id']
+
+  data = data.dropna()
   data = data.astype({
     'particle_id': 'str',
-    'mask_id': 'int',
+    'mask_id': 'str',
     'frame': 'int',
     'x_px': 'int',
     'y_px': 'int'
   })
 
-  # Convert pixels to um
-  if pixel_size is None:
-    pixel_size = 1
-    data['unit_conversion'] = 'px'
-  else:
-    data['unit_conversion'] = 'um/px'
-
-  data['area'] = data['area']*(pixel_size**2)
-  data['x'] = data['x']*pixel_size
-  data['y'] = data['y']*pixel_size
-  data['x_conversion'] = pixel_size
-  data['y_conversion'] = pixel_size
-
   # Clean up
-  (raw_path / "file_list.txt").unlink()
-  (tiff_path / "ShrunkenNuclei.csv").unlink()
+  (cyto_tracks_path / "file_list.txt").unlink()
+  (cyto_tracks_path / "ShrunkenNuclei.csv").unlink()
 
   return data
 

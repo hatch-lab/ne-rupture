@@ -1,3 +1,6 @@
 [submodule "external/aicspkg"]
 	path = external/aicspkg
 	url = https://github.com/AllenInstitute/aics-segmentation.git
+[submodule "external/tracking"]
+	path = external/tracking
+	url = https://git.scc.kit.edu/KIT-Sch-GE/2021-cell-tracking.git
