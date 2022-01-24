@@ -1,11 +1,16 @@
+from pathlib import Path
 import math
 import numpy as np
 import cv2
 from tqdm import tqdm
 from PIL import Image, ImageDraw, ImageFont
 from errors import NoImagesFound
-
+import builtins
 from skimage.color import label2rgb
+from skimage.measure import regionprops_table
+
+ROOT_PATH = builtins.ROOT_PATH
+FONT_PATH = (ROOT_PATH / ("lib/fonts/font.ttf")).resolve()
 
 # BGR
 CIRCLE_COLORS     = {

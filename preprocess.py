@@ -31,10 +31,10 @@ import sys
 import os
 from pathlib import Path
 from importlib import import_module
+import builtins
 
 ROOT_PATH = Path(__file__ + "/..").resolve()
-
-FONT_PATH = (ROOT_PATH / ("lib/fonts/font.ttf")).resolve()
+builtins.ROOT_PATH = ROOT_PATH
 
 sys.path.append(str(ROOT_PATH))
 
@@ -42,17 +42,11 @@ from docopt import docopt
 from lib.version import get_version
 from lib.output import colorize
 from lib.preprocessor import base_transform, make_tracks
-# from lib.tracks import make_tracks
 
 import math
 import lib.video as hatchvid
 import numpy as np
 import pandas as pd
-import cv2
-from PIL import Image, ImageDraw, ImageFont
-from skimage.color import label2rgb
-from skimage.measure import regionprops_table
-from tqdm import tqdm
 import subprocess
 
 import re
@@ -116,10 +110,70 @@ arguments['data_path'] = data_path
 arguments['tiff_path'] = tiff_path
 
 arguments['--pixel-size'] = arguments['--pixel-size'] if arguments['--pixel-size'] > 0 else None
+pixel_size = arguments['--pixel-size']
+
+### Extract TIFFs to make single channel, single frame TIFFs
+tiff_path.mkdir(mode=0o755, parents=True, exist_ok=True)
+  
+extracted_path = tiff_path / "extracted"
+extracted_path.mkdir(mode=0o755, parents=True, exist_ok=True)
+
+masks_path = tiff_path / "masks"
+masks_path.mkdir(mode=0o755, parents=True, exist_ok=True)
+
+# Get TIFF stacks
+files = list(data_path.glob("*.tif")) + list(data_path.glob("*.TIF")) + list(data_path.glob("*.tiff")) + list(data_path.glob("*.TIFF"))
+files = list(filter(lambda x: x.name[:2] != "._", files))
+
+if len(files) <= 0:
+  raise  NoImagesFound()
+files = [ str(x).lower() for x in files ]
+files.sort(key=lambda x: str(len(x)) + x)  
+
+# Frame data to store
+frame_shape = None
+frame_i = 1
+
+with yaspin(text="Extracting individual TIFFs") as spinner:
+  spinner.spinner = Spinners.dots8
+  for file in files:
+    with tifffile.TiffFile(file) as tif:
+
+      if pixel_size is None and 'XResolution' in tif.pages[0].tags:
+        pixel_size = tif.pages[0].tags['XResolution'].value
+        dtype = tif.pages[0].tags['XResolution'].dtype
+
+        if len(pixel_size) == 2:
+          pixel_size = pixel_size[0]
+
+        if dtype == '1I':
+          # Convert from inches to microns
+          pixel_size = pixel_size*3.937E-5
+        elif dtype == '2I':
+          # Convert from meters to microns
+          pixel_size = pixel_size*1E-6
+
+      for i in range(len(tif.pages)):
+        img = tif.pages[i].asarray()
+
+        # Get the signal channel
+        if len(img.shape) == 3:
+          # channel is 1-indexed, python is 0-indexed
+          img = img[:,:, (channel-1)]
+
+        if frame_shape is None:
+          frame_shape = img.shape
+
+        file_name = str(frame_i).zfill(4) + ".tif"
+        tifffile.TiffWriter(str(extracted_path / file_name)).save(img, resolution=(pixel_size, pixel_size, None))
+        frame_i += 1
+  spinner.write("Found " + str(frame_i-1) + " images")
+  spinner.ok("✅")
+
 
 ### Segment our data
 tiff_path.mkdir(exist_ok=True, mode=0o755)
-frame_info = processor.segment(data_path, tiff_path, pixel_size=arguments['--pixel-size'], params=arguments)
+processor.segment(data_path, tiff_path, extracted_path=extracted_path, masks_path=masks_path, frame_shape=frame_shape, pixel_size=pixel_size, channel=arguments['--channel'], params=arguments)
 
 ### Assign particles to tracks
 build_tracks = True
@@ -127,12 +181,6 @@ tracks_path = tiff_path / "tracks"
 tracks_path.mkdir(exist_ok=True, mode=0o755)
 gap_size = arguments['--gap-size']
 roi_size = arguments['--roi-size']
-
-lut = pd.read_csv(str(ROOT_PATH / "lib/luts/glasbey.lut"), dtype={'red': int, 'green': int, 'blue': int})
-# label2rgb expects colors in a [0,1] range
-lut['red_float'] = lut['red']/255
-lut['green_float'] = lut['green']/255
-lut['blue_float'] = lut['blue']/255
 
 while build_tracks:
   print("Building tracks with gap size {:d} and roi size {:f}...".format(gap_size, roi_size))
@@ -142,80 +190,9 @@ while build_tracks:
   show_gui = True
 
   if show_gui:
-    # Annotate frames
-    image_files = list(tiff_path.glob("*.tif"))
-    image_files.sort(key=lambda x: str(len(str(x))) + str(x))
-    annotated_frames = []
-
-    # Build track
-    track_frame = None
-    old_props = None
-    top_padding = 25
-    for image_file in tqdm(image_files, desc='Generating preview'):
-      track_file = tracks_path / image_file.name
-      frame = cv2.imread(str(image_file), cv2.IMREAD_GRAYSCALE)
-      mask = cv2.imread(str(track_file), cv2.IMREAD_ANYDEPTH)
-      if track_frame is None:
-        track_frame = Image.new('RGBA', ( frame.shape[1], frame.shape[0] ), (0,0,0,0))
-        track_draw = ImageDraw.Draw(track_frame)
-
-      props = pd.DataFrame(regionprops_table(mask, properties=('label', 'centroid')))
-      props.rename(columns={ 'centroid-0': 'y', 'centroid-1': 'x'}, inplace=True)
-      if props.shape[0] > lut.shape[0]:
-        new_luts = lut.sample(props.shape[0]-lut.shape[0], replace=True)
-        lut = pd.concat(lut, new_luts)
-      
-      props = props.merge(lut, left_on='label', right_index=True)
-
-      r = props['red_float'].tolist()
-      g = props['green_float'].tolist()
-      b = props['blue_float'].tolist()
-      colors = list(zip(r, g, b))
-
-      frame = label2rgb(mask, image=frame, colors=colors, alpha=0.4)
-
-      if old_props is not None:
-        old_props.rename(columns={ 'x': 'old_x', 'y': 'old_y' }, inplace=True)
-        coords = props.merge(old_props, on='label')
-        for row in coords.itertuples():
-          track_draw.line([ row.old_x, row.old_y, row.x, row.y ], fill=(row.red, row.green, row.blue), width=1)
-      old_props = props[['x', 'y', 'label']]
-
-      # Add padding for text
-      frame = Image.fromarray((frame*255).astype(np.uint8))
-      new_frame = Image.new('RGBA', (frame.size[0], frame.size[1]+top_padding), (0,0,0,0))
-      new_frame.paste(frame, ( 0, top_padding ))
-      frame = new_frame
-
-      font_color = 'rgb(255,255,255)'
-      small_font = ImageFont.truetype(str(FONT_PATH), size=14)
-      draw = ImageDraw.Draw(frame)
-
-      frame_idx = int(track_file.stem)
-      time = frame_idx*arguments['--frame-rate']
-
-      hours = math.floor(time / 3600)
-      minutes = math.floor((time - (hours*3600)) / 60)
-      seconds = math.floor((time - (hours*3600)) % 60)
-
-      label = "{:02d}h{:02d}'{:02d}\" ({:d})".format(hours, minutes, seconds, frame_idx)
-      draw.text((10, 10), label, fill=font_color, font=small_font)
-
-      # Add progress bar
-      width = int(frame_idx/len(image_files)*frame.size[0])
-      draw.rectangle([ (0, 0), (width, 5) ], fill=font_color)
-
-      annotated_frames.append(frame)
-
-    # Add in track frame and write out movie
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    writer = cv2.VideoWriter(str(ROOT_PATH / 'tmp/current_tracks.mp4'), fourcc, 10, (annotated_frames[0].size[0], annotated_frames[0].size[1]), True)
-    for annotated_frame in annotated_frames:
-      annotated_frame.paste(track_frame, ( 0, top_padding ), track_frame)
-      annotated_frame = np.asarray(annotated_frame.convert('RGB'))
-      writer.write(annotated_frame)
-    writer.release()
-
+    preview_video_path = ROOT_PATH / 'tmp/current_tracks.mp4'
+    make_video(tiff_path, tracks_path, preview_video_path)
+    
     print('Opening a preview of the tracks. Indicate if you like them or want to change the parameters.')
 
     cmd = [
@@ -238,16 +215,18 @@ while build_tracks:
       build_tracks = False
 
 # Clean up
-if (ROOT_PATH / 'tmp/current_tracks.mp4').exists():
-  (ROOT_PATH / 'tmp/current_tracks.mp4').unlink()
+if preview_video_path.exists():
+  preview_video_path.unlink()
 
 ### Extract features
-data = processor.extract_features(tiff_path, pixel_size=arguments['--pixel-size'], params=arguments)
+cyto_tracks_path = tiff_path / "cyto-tracks"
+cyto_tracks_path.mkdir(exist_ok=True, mode=0o755)
+data = processor.extract_features(tiff_path, tracks_path, cyto_tracks_path, pixel_size=pixel_size, params=arguments)
 output_file_path = (output_path / (arguments['--output-name'])).resolve()
 data.to_csv(str(output_file_path), header=True, encoding='utf-8', index=None)
 
-arguments['frame_width'] = frame_info['frame_shape'][1]
-arguments['frame_height'] = frame_info['frame_shape'][0]
+arguments['frame_width'] = frame_shape[1]
+arguments['frame_height'] = frame_shape[0]
 
 data = base_transform(data, arguments)
 

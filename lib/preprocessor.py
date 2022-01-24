@@ -287,6 +287,8 @@ def make_tracks(tiff_path, output_path, delta_t=3, default_roi_size=2):
   exporter = ExportResults()
   exporter(tracks, output_path, mask_shape, time_steps=sorted(img_files.keys()))
 
+  # Figure out how to do gap filling?
+
   # Standardize the file names
   track_files = output_path.glob("*.tif")
   for track_file in track_files:
