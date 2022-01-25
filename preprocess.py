@@ -178,7 +178,7 @@ with yaspin(text="Extracting individual TIFFs") as spinner:
 
 ### Segment our data
 tiff_path.mkdir(exist_ok=True, mode=0o755)
-processor.segment(data_path, tiff_path, extracted_path, masks_path, pixel_size=pixel_size, channel=arguments['--channel'], params=arguments)
+# processor.segment(data_path, tiff_path, extracted_path, masks_path, pixel_size=pixel_size, channel=arguments['--channel'], params=arguments)
 
 ### Assign particles to tracks
 build_tracks = True
@@ -189,7 +189,7 @@ roi_size = arguments['--roi-size']
 
 while build_tracks:
   print("Building tracks with gap size {:d} and roi size {:f}...".format(gap_size, roi_size))
-  make_tracks(tiff_path, tracks_path, delta_t=arguments['--gap-size'], default_roi_size=arguments['--roi-size'])
+  # make_tracks(tiff_path, tracks_path, delta_t=arguments['--gap-size'], default_roi_size=arguments['--roi-size'])
 
   ### Display tracks
   show_gui = True

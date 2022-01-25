@@ -203,8 +203,10 @@ def make_video(tiff_path, mask_path, output_file_path, graph_path=None, frame_ra
   top_padding = 25
   bottom_padding = 0
   track_frame = None
-  old_props = None
-  annotated_frames = []
+  coords = None
+  
+  fourcc = cv2.VideoWriter_fourcc(*codec)
+  writer = None
 
   if show_pbar:
     pbar = tqdm(image_files, desc=description)
@@ -240,6 +242,51 @@ def make_video(tiff_path, mask_path, output_file_path, graph_path=None, frame_ra
     # Annotate the frame if needed
     if annotate and data is not None:
       image = _annotate_image(image, data.loc[(data['frame'] == frame_idx)])
+
+    # Build tracks if necessary
+    if draw_tracks:
+      if coords is None:
+        coords = props.copy()
+        coords['frame'] = frame_idx
+      else:
+        new_coords = props.copy()
+        new_coords['frame'] = frame_idx
+        new_coords = new_coords[[ 'label', 'x', 'y', 'red', 'green', 'blue', 'frame' ]]
+        coords = coords[[ 'label', 'x', 'y', 'red', 'green', 'blue', 'frame' ]]
+
+        coords = pd.concat([ coords, new_coords ])
+        coords = coords.loc[(coords['frame'] > frame_idx-15)]
+        coords.sort_values(['label', 'frame'], inplace=True, ascending=False, ignore_index=True)
+        alphas = pd.DataFrame({ 
+          'frame': list(range(frame_idx-14, frame_idx+1)),
+          'alpha': [
+            0,
+            26,
+            51,
+            77,
+            102,
+            128,
+            153,
+            179,
+            204,
+            230,
+            255,
+            255,
+            255,
+            255,
+            255
+          ] 
+        })
+        coords = coords.merge(alphas, on='frame', how='left')
+
+        track_draw = ImageDraw.Draw(image, 'RGBA')
+
+        for row in coords.itertuples():
+          old_coords = coords.loc[((coords['frame'] == (row.frame-1)) & (coords['label'] == row.label))]
+          if not old_coords.empty:
+            old_x = old_coords['x'].iloc[0]
+            old_y = old_coords['y'].iloc[0]
+            track_draw.line([ old_x, old_y, row.x, row.y ], fill=(row.red, row.green, row.blue, row.alpha), width=2)
 
     # Crop the frame if need be
     if crop is not False and data is not None:
@@ -291,40 +338,12 @@ def make_video(tiff_path, mask_path, output_file_path, graph_path=None, frame_ra
     width = int(round(frame_idx/len(image_files)*image.size[0]))
     draw.rectangle([ (0, 0), (width, 5) ], fill=font_color)
 
-    annotated_frames.append(image)
+    if writer is None:
+      writer = cv2.VideoWriter(str(output_file_path), fourcc, 10, (image.size[0], image.size[1]), True)
 
-    # Build tracks if necessary
-    if draw_tracks:
-      if track_frame is None:
-        track_frame = Image.new('RGBA', mask.size, (0,0,0,0))
-        track_draw = ImageDraw.Draw(track_frame)
-
-      if old_props is not None:
-        old_props.rename(columns={ 'x': 'old_x', 'y': 'old_y' }, inplace=True)
-        coords = props.merge(old_props, on='label')
-        for row in coords.itertuples():
-          track_draw.line([ row.old_x, row.old_y, row.x, row.y ], fill=(row.red, row.green, row.blue), width=2)
-      
-      old_props = props[['x', 'y', 'label']]
-
-  # Write out movie, adding the track frame if needed
-  if scale != 1.0 and track_frame is not None:
-    track_frame = track_frame.resize((scale*track_frame.size[0], scale*track_frame.size[1]), resample=Image.BILINEAR)
-
-  fourcc = cv2.VideoWriter_fourcc(*codec)
-  writer = cv2.VideoWriter(str(output_file_path), fourcc, 10, (annotated_frames[0].size[0], annotated_frames[0].size[1]), True)
-  description = 'Adding tracks' if draw_tracks else 'Writing movie'
-  if show_pbar:
-    pbar = tqdm(annotated_frames, desc=description)
-  else:
-    pbar = annotated_frames
-
-  for annotated_frame in pbar:
-    if draw_tracks:
-      annotated_frame.paste(track_frame, ( 0, top_padding ), track_frame)
-    annotated_frame = np.asarray(annotated_frame.convert('RGB'))
-    annotated_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_RGB2BGR)
-    writer.write(annotated_frame)
+    image = np.asarray(image.convert('RGB'))
+    image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+    writer.write(image)
   writer.release()
 
 def _annotate_image(image, f_data):
