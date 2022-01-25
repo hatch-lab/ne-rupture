@@ -20,7 +20,7 @@ Options:
   --data-set=<string>  The unique identifier for this data set. If none is supplied, the base file name of each TIFF will be used.
   --pixel-size=<float>  [default: 1] Pixels per micron. If 0, will attempt to detect automatically.
   --frame-rate=<int>  [default: 180] The seconds that elapse between frames
-  --gap-size=<int>  [default: 3] The maximum gap size when building tracks
+  --gap-size=<int>  [default: 5] The maximum gap size when building tracks
   --roi-size=<float>  [default: 2.0] Given a segment at time t+1, will search for a shape to match one found at time t. The search distance is the median shape size*roi-size
 
 Output:
@@ -48,6 +48,10 @@ import lib.video as hatchvid
 import numpy as np
 import pandas as pd
 import subprocess
+import tifffile
+
+from yaspin import yaspin
+from yaspin.spinners import Spinners
 
 import re
 
@@ -98,6 +102,7 @@ except SchemaError as error:
 ### Arguments and inputs
 input_path = (ROOT_PATH / (arguments['INPUT'])).resolve()
 output_path = (input_path / (arguments['--output-dir']))
+output_path.mkdir(exist_ok=True, mode=0o755)
 data_path = (ROOT_PATH / (arguments['--data-dir'])).resolve() if arguments['--data-dir'] else processor.get_default_data_path(input_path)
 
 arguments['--data-set'] = arguments['--data-set'] if arguments['--data-set'] else (input_path).name
@@ -173,7 +178,7 @@ with yaspin(text="Extracting individual TIFFs") as spinner:
 
 ### Segment our data
 tiff_path.mkdir(exist_ok=True, mode=0o755)
-processor.segment(data_path, tiff_path, extracted_path=extracted_path, masks_path=masks_path, frame_shape=frame_shape, pixel_size=pixel_size, channel=arguments['--channel'], params=arguments)
+processor.segment(data_path, tiff_path, extracted_path, masks_path, pixel_size=pixel_size, channel=arguments['--channel'], params=arguments)
 
 ### Assign particles to tracks
 build_tracks = True
@@ -191,7 +196,7 @@ while build_tracks:
 
   if show_gui:
     preview_video_path = ROOT_PATH / 'tmp/current_tracks.mp4'
-    make_video(tiff_path, tracks_path, preview_video_path)
+    hatchvid.make_video(tiff_path, tracks_path, preview_video_path)
     
     print('Opening a preview of the tracks. Indicate if you like them or want to change the parameters.')
 
@@ -207,10 +212,19 @@ while build_tracks:
       new_gap_size = int(input("Enter a new gap size ({:d}): ".format(gap_size)))
       new_roi_size = float(input("Enter a new ROI size ({:f}): ".format(roi_size)))
 
-      if new_gap_size > 0:
-        gap_size = new_gap_size
-      if new_roi_size >= 1:
-        roi_size = new_roi_size
+      if new_gap_size == '':
+        new_gap_size = gap_size
+
+      if new_roi_size == '':
+        new_roi_size = roi_size
+
+      if new_gap_size == gap_size and new_roi_size == roi_size:
+        build_tracks = False
+      else:
+        if new_gap_size > 0:
+          gap_size = new_gap_size
+        if new_roi_size >= 1:
+          roi_size = new_roi_size
     else:
       build_tracks = False
 

@@ -40,10 +40,6 @@ from skimage import filters, morphology
 import scipy
 import cv2
 
-from tqdm import tqdm
-from yaspin import yaspin
-from yaspin.spinners import Spinners
-
 from schema import Schema, And, Or, Use, SchemaError, Optional, Regex
 
 NAME      = "cellprofiler"
@@ -68,18 +64,15 @@ def get_default_data_path(input_path):
   """
   return input_path / "images/raw"
 
-def segment(data_path, tiff_path, mask_dir="masks", extracted_dir="extracted", pixel_size=None, channel=1, params={}):
+def segment(data_path, tiff_path, extracted_path, masks_path, pixel_size=None, channel=1, params={}):
   """
   Given a set of images, segment them and save the masks and processed images
-
-  Input images can be multi-page TIFFs. They will be extracted into the singletons
-  directory.
 
   Arguments:
     data_path Path The path to the raw images
     tiff_path Path The root path where to save processed images and masks
-    mask_dir str The subdirectory in tiff_path to save masks
-    extracted_dir str The subdirectory in tiff_path to save raw images
+    extracted_path Path The subdirectory in tiff_path to save raw images
+    masks_path Path The subdirectory in tiff_path to save masks
     pixel_size float|None How many microns in a mixel
     channel int Which channel to extract
     params dict Other params passed by preprocess
@@ -88,69 +81,8 @@ def segment(data_path, tiff_path, mask_dir="masks", extracted_dir="extracted", p
     Information about the images
   """
 
-  tiff_path.mkdir(mode=0o755, parents=True, exist_ok=True)
-  
-  extracted_path = tiff_path / extracted_dir
-  extracted_path.mkdir(mode=0o755, parents=True, exist_ok=True)
-
-  mask_path = tiff_path / mask_dir
-  mask_path.mkdir(mode=0o755, parents=True, exist_ok=True)
-
   pipeline_path = Path(params['--segment-pipeline']).resolve() if params['--segment-pipeline'] is not None else ROOT_PATH / ('preprocessors/cellprofiler/segment.cppipeline')
-
-  # Get TIFF stacks
-  files = list(data_path.glob("*.tif"))
-  if len(files) <= 0:
-    # TODO: Make this...not crappy
-    files = list(data_path.glob("*.TIF"))
-  # Filter out ._ files OS X likes to make
-  files = list(filter(lambda x: x.name[:2] != "._", files))
-
-  if len(files) <= 0:
-    raise  NoImagesFound()
-  files = [ str(x) for x in files ]
-  files.sort(key=lambda x: str(len(x)) + x)  
-
-  # Frame data to store
-  frame_shape = None
-  frame_i = 1
-
-  with yaspin(text="Extracting individual TIFFs") as spinner:
-    spinner.spinner = Spinners.dots8
-    for file in files:
-      with tifffile.TiffFile(file) as tif:
-
-        if pixel_size is None and 'XResolution' in tif.pages[0].tags:
-          pixel_size = tif.pages[0].tags['XResolution'].value
-          dtype = tif.pages[0].tags['XResolution'].dtype
-
-          if len(pixel_size) == 2:
-            pixel_size = pixel_size[0]
-
-          if dtype == '1I':
-            # Convert from inches to microns
-            pixel_size = pixel_size*3.937E-5
-          elif dtype == '2I':
-            # Convert from meters to microns
-            pixel_size = pixel_size*1E-6
-
-        for i in range(len(tif.pages)):
-          img = tif.pages[i].asarray()
-
-          # Get the signal channel
-          if len(img.shape) == 3:
-            # channel is 1-indexed, python is 0-indexed
-            img = img[:,:, (channel-1)]
-
-          if frame_shape is None:
-            frame_shape = img.shape
-
-          file_name = str(frame_i).zfill(4) + ".tif"
-          tifffile.TiffWriter(str(extracted_path / file_name)).save(img, resolution=(pixel_size, pixel_size, None))
-          frame_i += 1
-    spinner.write("Found " + str(frame_i-1) + " images")
-    spinner.ok("✅")
-
+  
   raw_files = extracted_path.glob("*.tif")
   raw_files = list(filter(lambda x: x.name[:2] != "._", raw_files))
   raw_files = [ str(x) + "\n" for x in raw_files ]
@@ -176,7 +108,7 @@ def segment(data_path, tiff_path, mask_dir="masks", extracted_dir="extracted", p
   mask_files = tiff_path.glob("*-mask.tiff")
   for mask_file in mask_files:
     new_name = mask_file.name.replace("-mask.tiff", ".tif")
-    mask_file.rename((mask_path / new_name))
+    mask_file.rename((masks_path / new_name))
 
   # CellProfiler saves things as .tiff
   # We expect everything as .tif ><
@@ -185,29 +117,20 @@ def segment(data_path, tiff_path, mask_dir="masks", extracted_dir="extracted", p
     new_name = file.name.replace(".tiff", ".tif")
     file.rename((tiff_path / new_name))
 
-  return {
-    'frame_shape': frame_shape,
-    'num_frames': frame_i
-  }
-
-def extract_features(tiff_path, tracks_dir="tracks", cyto_dir="cyto_tracks", pixel_size=1.0, params={}):
+def extract_features(tiff_path, tracks_path, cyto_tracks_path, pixel_size=1.0, params={}):
   """
   Extract features from segmented masks that have already been assigned to tracks
 
   Arguments:
     tiff_path Path The path to the folder that holds processed images
-    tracks_dir str The subdir in tiff_path that holds track masks
-    cyto_dir str The subdir in tiff_path where cytoplasm masks should be exposrted to
+    tracks_path Path The subdir in tiff_path that holds track masks
+    cyto_tracks_path Path The subdir in tiff_path that holds cyto masks
     pixel_size float The size of pixels
     params dict A dictionary of parameters
 
   Return:
     pandas.DataFrame The extracted features for each cell
   """
-  tracks_path = (tiff_path / tracks_dir).resolve()
-  tracks_path.mkdir(exist_ok=True, mode=0o755)
-
-  cyto_tracks_path = (tiff_path / cyto_dir).resolve()
   cyto_tracks_path.mkdir(exist_ok=True, mode=0o755)
 
   pipeline_path = Path(params['--features-pipeline']).resolve() if params['--features-pipeline'] is not None else ROOT_PATH / ('preprocessors/cellprofiler/extract.cppipeline')

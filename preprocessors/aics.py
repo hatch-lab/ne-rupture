@@ -51,10 +51,6 @@ from external.aicspkg.aicssegmentation.core.pre_processing_utils import image_sm
 from external.aicspkg.aicssegmentation.core.MO_threshold import MO
 from external.aicspkg.aicssegmentation.core.seg_dot import dot_2d_slice_by_slice_wrapper
 
-from tqdm import tqdm
-from yaspin import yaspin
-from yaspin.spinners import Spinners
-
 from feature_extraction import tracks
 from lib import base_transform
 
