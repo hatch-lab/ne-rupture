@@ -74,8 +74,6 @@ def process_event_seeds(p_data, conf):
   Returns:
     pd.DataFrame
   """
-  if '42' in p_data['particle_id']:
-    print(p_data['event'].unique())
   idx = (p_data['event'] != 'N')
   p_data.loc[idx, 'event_id'] = (p_data.loc[idx,'frame'].diff() > 1).cumsum()
 
