@@ -13,6 +13,8 @@ Options:
   -h, --help
   -v, --version
   --start-over  Whether to start over
+  --distance-filter=<int>  [default: 5] If a given cell is ever closer than this value (in um) to another cell, it is excluded
+  --jumpy-filter=<float>  [default: 0.02] If a given cell ever moves faster than this value (in microns/180s), it is excluded
 
 Output:
   Generates graphs of each nucleus's predicted and actual events.
@@ -41,16 +43,20 @@ from tqdm import tqdm
 import lib.video as hatchvid
 from lib.summarize import get_cell_stats
 
+from schema import Schema, And, Or, Use, SchemaError, Optional, Regex
+
 NEED_TIFFS = True
 SAVES_INTERMEDIATES = True
 NAME = "manual"
 CONF_PATH = (ROOT_PATH / ("classifiers/manual/conf.json")).resolve()
-FONT_PATH = (ROOT_PATH / ("common/font.ttf")).resolve()
+FONT_PATH = (ROOT_PATH / ("lib/fonts/font.ttf")).resolve()
 
 def get_schema():
   return {
     'manual': lambda x: True,
-    Optional('--start-over'): bool
+    Optional('--start-over'): bool,
+    '--distance-filter': And(Use(int), lambda n: n >= 0),
+    '--jumpy-filter': And(Use(float), lambda n: n >= 0.0)
   }
 
 def process_event_seeds(p_data, conf):
@@ -68,6 +74,8 @@ def process_event_seeds(p_data, conf):
   Returns:
     pd.DataFrame
   """
+  if '42' in p_data['particle_id']:
+    print(p_data['event'].unique())
   idx = (p_data['event'] != 'N')
   p_data.loc[idx, 'event_id'] = (p_data.loc[idx,'frame'].diff() > 1).cumsum()
 
@@ -134,7 +142,7 @@ def seed_events(data, tiff_path, tmp_csv_path, conf, idx=0):
     frame = int(data['frame'].iloc[idx])
 
     frame_file_name = str(frame).zfill(4) + '.tif'
-    frame_path = (tiff_path / (data_set + "/8-bit/" + frame_file_name)).resolve()
+    frame_path = (tiff_path / (data_set + "/" + frame_file_name)).resolve()
 
     raw_frame = cv2.imread(str(frame_path), cv2.IMREAD_GRAYSCALE)
 
@@ -177,8 +185,8 @@ def seed_events(data, tiff_path, tmp_csv_path, conf, idx=0):
 
     text_color = 'rgb(0,0,0)' if inversion else 'rgb(255,255,255)'
     reticle_color = 'rgb(255,255,255)' if inversion else 'rgb(0,0,0)'
-    draw.text((10, 15), title, fill=text_color, font=title_font)
-    draw.text((10, 35), label, fill=text_color, font=small_font)
+    draw.text((10, 10), title, fill=text_color, font=title_font)
+    draw.text((10, 30), label, fill=text_color, font=small_font)
     draw.text((10, crop_frame.shape[0]-50), controls, fill=text_color, font=small_font)
 
     # Add reticles
@@ -551,18 +559,18 @@ def run(data, tiff_path, conf=False, fast=False):
     with CONF_PATH.open(mode='r') as file:
       conf = json.load(file)
 
-  tmp_path = ROOT_PATH / conf['tmp_dir']
-  tmp_path.mkdir(mode=0o755, parents=True, exist_ok=True)
-
-  tmp_csv_path = tmp_path / "data.csv"
+  tmp_path = Path(conf['tmp_path'])
+  tmp_path.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
   
   # Filter out particles that are too near each other
-  data = data.groupby([ 'data_set', 'particle_id' ]).filter(
-    lambda x: np.min(x['nearest_neighbor_distance']) >= 50*x['x_conversion'].iloc[0]
-  )
+  if conf['--distance-filter'] > 0:
+    data = data.groupby([ 'data_set', 'particle_id' ]).filter(
+      lambda x: np.min(x['nearest_neighbor_distance']) >= conf['--distance-filter']*x['x_conversion'].iloc[0]
+    )
 
   # Filter out particles that are too jumpy
-  data = data.groupby([ 'data_set', 'particle_id' ]).filter(lambda x: np.all(x['speed'] <= 0.05)) # Faster than 0.05 µm/3 min
+  if conf['--jumpy-filter'] > 0:
+    data = data.groupby([ 'data_set', 'particle_id' ]).filter(lambda x: np.all(x['speed'] <= conf['--jumpy-filter'])) # Faster than 0.05 µm/3 min
 
   data.sort_values([ 'data_set', 'particle_id', 'frame' ], inplace=True)
   data.reset_index(inplace=True, drop=True)
@@ -573,13 +581,14 @@ def run(data, tiff_path, conf=False, fast=False):
     data.loc[:,'event'] = 'N'
     data.loc[:,'event_id'] = -1
 
-  done, data = seed_events(data, tiff_path, tmp_csv_path, conf=conf, idx=idx)
+  done, data = seed_events(data, tiff_path, tmp_path, conf=conf, idx=idx)
 
   if not fast and done:
     try:
       tqdm.pandas(desc="Processing classified events")
       data = data.groupby([ 'data_set', 'particle_id' ]).progress_apply(process_event_seeds, conf=conf)
     except Exception as e:
+      print(e)
       return ( False, data )
 
   return ( done, data )

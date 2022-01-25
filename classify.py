@@ -32,8 +32,10 @@ import sys
 import os
 from pathlib import Path
 from importlib import import_module
+import builtins
 
 ROOT_PATH = Path(__file__ + "/..").resolve()
+builtins.ROOT_PATH = ROOT_PATH
 
 sys.path.append(str(ROOT_PATH))
 
@@ -41,8 +43,13 @@ from docopt import docopt
 from lib.version import get_version
 from lib.output import colorize
 import lib.video as hatchvid
+import json
 
 import re
+
+import numpy as np
+import pandas as pd
+import subprocess
 
 from schema import Schema, And, Or, Use, SchemaError, Optional, Regex
 
@@ -63,12 +70,6 @@ classifier_arguments = docopt(classifier.__doc__, argv=[arguments['CLASSIFIER']]
 classifier_schema = classifier.get_schema()
 
 arguments.update(classifier_arguments)
-
-import numpy as np
-import pandas as pd
-import subprocess
-
-from schema import Schema, And, Or, Use, SchemaError, Optional, Regex
 
 schema = {
   'CLASSIFIER': And(len, lambda n: (ROOT_PATH / ('classifiers/' + str(n) + '.py')).is_file(), error='That classifier does not exist'),
@@ -117,9 +118,9 @@ start_over = True if '--start-over' in arguments and arguments['--start-over'] e
 ### Get our classifier
 classifier = import_module("classifiers." + classifier_name)
 
-tmp_path = ROOT_PATH / ("tmp/classifiers/" + classifier_name)
-tmp_path.mkdir(mode=0o755, parents=True, exist_ok=True)
-intermediate_path = tmp_path / (re.sub(r'[^a-zA-Z0-9\-\_\.\+]', '', arguments['INPUT']) + "/" + arguments['--input-name'])
+tmp_path = ROOT_PATH / ("tmp/classifiers/" + classifier_name +  "/" + (re.sub(r'[^a-zA-Z0-9\-\_\.\+]', '', input_root.name)))
+tmp_path.mkdir(exist_ok=True, mode=0o755, parents=True)
+intermediate_path = tmp_path / arguments['--input-name']
 
 if classifier.SAVES_INTERMEDIATES and not start_over:
   data_file_path = intermediate_path if intermediate_path.exists() else data_file_path
@@ -129,6 +130,15 @@ data = pd.read_csv(str(data_file_path), header=0, dtype={ 'particle_id': str })
 if classifier.SAVES_INTERMEDIATES and 'current_idx' not in data.columns:
   data.loc[:, 'current_idx'] = 0
 
+# Merge in any run-time conf options
+if not conf:
+  with classifier.CONF_PATH.open(mode='r') as file:
+    conf = json.load(file)
+
+if 'tmp_path' not in conf:
+  conf['tmp_path'] = str(intermediate_path)
+
+conf.update(arguments)
 done, data = classifier.run(data, tiff_path, conf=conf)
 
 output_path.mkdir(exist_ok=True)
@@ -167,4 +177,4 @@ if not skip_graphs:
     str( (tiff_path / (x.data_set + '/' + str(x.frame).zfill(4) + '.tif')).resolve() ), axis=1
   )
 
-  hatchvid.make_videos(data, video_path, draw_tracks=draw_tracks)
+  hatchvid.make_videos(tiff_path, output_file_path, video_path, draw_tracks=draw_tracks)

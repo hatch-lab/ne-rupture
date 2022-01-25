@@ -1,25 +1,26 @@
 from pathlib import Path
 import math
 import numpy as np
+import pandas as pd
 import cv2
-from tqdm import tqdm
 from PIL import Image, ImageDraw, ImageFont
 from errors import NoImagesFound
 import builtins
 from skimage.color import label2rgb
 from skimage.measure import regionprops_table
+from tqdm import tqdm
+import subprocess
 
 ROOT_PATH = builtins.ROOT_PATH
 FONT_PATH = (ROOT_PATH / ("lib/fonts/font.ttf")).resolve()
 
-# BGR
 CIRCLE_COLORS     = {
   "N": 'rgb(50,50,50)',
-  "R": 'rgb(100,100,255)',
+  "R": 'rgb(255,100,100)',
   "E": 'rgb(100,255,100)',
   "X": 'rgb(255,255,255)',
-  "M": 'rgb(255,100,100)',
-  "?": 'rgb(100,100,255)'
+  "M": 'rgb(100,100,255)',
+  "?": 'rgb(255,100,100)'
 }
 CIRCLE_THICKNESS  = {
   "N": 1,
@@ -110,13 +111,14 @@ def crop_frame(frame, x, y, width, height, is_color=False):
 
   return frame
 
-def make_videos(tiff_path, data, output_path, annotate=True, draw_tracks=True, codec='mp4v'):
+def make_videos(tiff_path, data_file_path, output_path, annotate=True, draw_tracks=True, codec='mp4v'):
+  data = pd.read_csv(str(data_file_path), header=0, dtype={ 'particle_id': str })
   for data_set in data['data_set'].unique():
     ds_data = data[( (data['data_set'] == data_set) )].copy()
     if ds_data.shape[0] <= 0:
       continue
 
-    ds_data = ds_data[[ 'data_set', 'particle_id', 'frame', 'time', 'x_px', 'y_px', 'event' ]]
+    ds_data = ds_data[[ 'data_set', 'particle_id', 'frame', 'frame_rate', 'time', 'x_px', 'y_px', 'event' ]]
     ds_data.sort_values('frame')
     
     field_video_path = output_path / (data_set + '.mp4')
@@ -135,7 +137,9 @@ def make_videos(tiff_path, data, output_path, annotate=True, draw_tracks=True, c
       codec=codec
     )
 
-    for particle_id in ds_data['particle_id'].unique():
+    pbar = tqdm(ds_data['particle_id'].unique())
+    for particle_id in pbar:
+      pbar.set_description('Building movie for ' + data_set + "/" + particle_id)
       p_data = ds_data[(ds_data['particle_id'] == particle_id)].copy()
       if p_data.shape[0] <= 0:
         continue
@@ -149,7 +153,7 @@ def make_videos(tiff_path, data, output_path, annotate=True, draw_tracks=True, c
         "Rscript",
         "--vanilla",
         str(r_graph_gen_path),
-        str(output_file_path),
+        str(data_file_path),
         str(graph_path),
         data_set,
         particle_id,
@@ -164,9 +168,12 @@ def make_videos(tiff_path, data, output_path, annotate=True, draw_tracks=True, c
         data_set_tiff_path, 
         data_set_mask_path, 
         cell_video_path, 
+        graph_path=graph_path,
+        crop=(100,100),
+        scale=3.0,
         data=p_data, 
         frame_rate=frame_rate, 
-        movie_name = data_set + "/" + particle_id, 
+        show_pbar=False,
         annotate=False, 
         draw_tracks=False, 
         codec=codec
@@ -175,8 +182,10 @@ def make_videos(tiff_path, data, output_path, annotate=True, draw_tracks=True, c
       if graph_path.exists():
         graph_path.unlink()
 
-def make_video(tiff_path, mask_path, output_file_path, graph_path=None, frame_rate=180, draw_tracks=True, data=None, annotate=True, crop=False, scale=1.0, movie_name=None, codec='mp4v', lut='glasbey'):
+def make_video(tiff_path, mask_path, output_file_path, graph_path=None, frame_rate=180, draw_tracks=True, data=None, annotate=True, crop=False, scale=1.0, movie_name=None, codec='mp4v', lut='glasbey', show_pbar=True):
   lut = pd.read_csv(str(ROOT_PATH / ("lib/luts/" + lut + ".lut")), dtype={'red': int, 'green': int, 'blue': int})
+  lut = lut[['red', 'green', 'blue']].copy()
+  lut.reset_index()
   # label2rgb expects colors in a [0,1] range
   lut['red_float'] = lut['red']/255
   lut['green_float'] = lut['green']/255
@@ -196,19 +205,26 @@ def make_video(tiff_path, mask_path, output_file_path, graph_path=None, frame_ra
   track_frame = None
   old_props = None
   annotated_frames = []
-  
-  for image_file in tqdm(image_files, desc=description):
+
+  if show_pbar:
+    pbar = tqdm(image_files, desc=description)
+  else:
+    pbar = image_files
+  for image_file in pbar:
     image = Image.open(str(image_file))
-    if not (mask_path / image_file.name).exists():
-      raise ValueError("No mask matches " + str(image_file) + " in " + str(mask_path))
+    tracks_file = mask_path / image_file.name
+    if not tracks_file.exists():
+      raise ValueError("No mask matches " + str(image_file.name) + " in " + str(mask_path))
     mask = Image.open(str(tracks_file))
 
+    frame_idx = int(image_file.stem)  
+
     # Assign colors to each label
-    props = pd.DataFrame(regionprops_table(mask, properties=('label', 'centroid')))
+    props = pd.DataFrame(regionprops_table(np.asarray(mask), properties=('label', 'centroid')))
     props.rename(columns={ 'centroid-0': 'y', 'centroid-1': 'x' }, inplace=True)
-    if props.shape[0] > lut.shape[0]:
-      new_luts = lut.sample(props.shape[0]-lut.shape[0], replace=True)
-      lut = pd.concat(lut, new_luts)
+    if np.max(props['label']) > lut.shape[0]:
+      new_luts = lut.sample(np.max(props['label'])-lut.shape[0], replace=True, ignore_index=True)
+      lut = pd.concat([lut, new_luts], ignore_index=True)
     props = props.merge(lut, left_on='label', right_index=True)
 
     # Add mask overlay
@@ -217,24 +233,29 @@ def make_video(tiff_path, mask_path, output_file_path, graph_path=None, frame_ra
     b = props['blue_float'].tolist()
     colors = list(zip(r, g, b))
 
-    np_image = label2rgb(np.asarray(mask), image=np.asarray(image), colors=colors, alpha=0.4)
-    image = Image.fromarray((np_image*255).astype(np.uint8))
+    if annotate:
+      np_image = label2rgb(np.asarray(mask), image=np.asarray(image), colors=colors, alpha=0.4)
+      image = Image.fromarray((np_image*255).astype(np.uint8))
 
     # Annotate the frame if needed
-    frame_idx = int(image_file.stem)
     if annotate and data is not None:
       image = _annotate_image(image, data.loc[(data['frame'] == frame_idx)])
 
     # Crop the frame if need be
     if crop is not False and data is not None:
       draw_tracks = False
-      crop_x = data[(data['frame'] == frame_idx), 'x_px'].iloc[0]
-      crop_y = data[(data['frame'] == frame_idx), 'y_px'].iloc[0]
+      f_data = data.loc[(data['frame'] == frame_idx)]
+      if f_data.empty:
+        # A missing frame, fill in with a blank from
+        image = Image.new('RGB', crop, (0,0,0))
+      else:
+        crop_x = f_data['x_px'].iloc[0]
+        crop_y = f_data['y_px'].iloc[0]
 
-      image = Image.fromarray(crop_frame(np.asarray(image), crop_x, crop_y, crop[0], crop[1]))
+        image = Image.fromarray(crop_frame(np.asarray(image), crop_x, crop_y, crop[0], crop[1]))
 
     if scale != 1.0:
-      image = image.resize((scale*image.size[0], scale*image.size[1]), resample=Image.BILINEAR)
+      image = image.resize((int(round(scale*image.size[0])), int(round(scale*image.size[1]))), resample=Image.BILINEAR)
 
     # Add padding for text, graph
     if graph_path is not None:
@@ -242,7 +263,7 @@ def make_video(tiff_path, mask_path, output_file_path, graph_path=None, frame_ra
       graph_draw = ImageDraw.Draw(graph)
 
       # Draw a line on the graph
-      x = int(round(graph.size[0]*(this_frame_i/end_frame_i)))
+      x = int(round(graph.size[0]*(frame_idx/len(image_files))))
       graph_draw.line((x, 0, x, graph.size[1]), fill=(255,255,255), width=1)
       bottom_padding = graph.size[1]
 
@@ -267,7 +288,7 @@ def make_video(tiff_path, mask_path, output_file_path, graph_path=None, frame_ra
     draw.text((10, 10), label, fill=font_color, font=small_font)
 
     # Add progress bar
-    width = int(frame_idx/len(image_files)*image.size[0])
+    width = int(round(frame_idx/len(image_files)*image.size[0]))
     draw.rectangle([ (0, 0), (width, 5) ], fill=font_color)
 
     annotated_frames.append(image)
@@ -287,15 +308,22 @@ def make_video(tiff_path, mask_path, output_file_path, graph_path=None, frame_ra
       old_props = props[['x', 'y', 'label']]
 
   # Write out movie, adding the track frame if needed
-  if scale != 1.0:
+  if scale != 1.0 and track_frame is not None:
     track_frame = track_frame.resize((scale*track_frame.size[0], scale*track_frame.size[1]), resample=Image.BILINEAR)
 
   fourcc = cv2.VideoWriter_fourcc(*codec)
   writer = cv2.VideoWriter(str(output_file_path), fourcc, 10, (annotated_frames[0].size[0], annotated_frames[0].size[1]), True)
-  for annotated_frame in tqdm(annotated_frames, desc='Adding tracks'):
+  description = 'Adding tracks' if draw_tracks else 'Writing movie'
+  if show_pbar:
+    pbar = tqdm(annotated_frames, desc=description)
+  else:
+    pbar = annotated_frames
+
+  for annotated_frame in pbar:
     if draw_tracks:
       annotated_frame.paste(track_frame, ( 0, top_padding ), track_frame)
     annotated_frame = np.asarray(annotated_frame.convert('RGB'))
+    annotated_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_RGB2BGR)
     writer.write(annotated_frame)
   writer.release()
 
@@ -303,11 +331,11 @@ def _annotate_image(image, f_data):
   draw = ImageDraw.Draw(image)
   font = ImageFont.truetype(str(FONT_PATH), size=16)
 
-  for row in f_data.itertuple():
+  for row in f_data.itertuples():
     particle_id = row.particle_id
     x = row.x_px
     y = row.y_px
-    event = row.event if 'event' in row else 'N'
+    event = row.event if hasattr(row, 'event') else 'N'
 
     draw.ellipse([x-CIRCLE_RADIUS, y-CIRCLE_RADIUS, x+CIRCLE_RADIUS, y+CIRCLE_RADIUS], outline=CIRCLE_COLORS[event], width=CIRCLE_THICKNESS[event])
     draw.text((x, y), str(particle_id), font=font, anchor='ms')
