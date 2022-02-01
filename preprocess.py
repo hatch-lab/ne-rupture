@@ -47,7 +47,6 @@ import math
 import lib.video as hatchvid
 import numpy as np
 import pandas as pd
-import subprocess
 import tifffile
 
 from yaspin import yaspin
@@ -132,8 +131,9 @@ files = list(filter(lambda x: x.name[:2] != "._", files))
 
 if len(files) <= 0:
   raise  NoImagesFound()
-files = [ str(x).lower() for x in files ]
-files.sort(key=lambda x: str(len(x)) + x)  
+
+files.sort(key=lambda x: str(len(str(x))) + str(x).lower())
+files = sorted(set(files), key=lambda x: str(len(str(x))) + str(x).lower())
 
 # Frame data to store
 frame_shape = None
@@ -178,7 +178,7 @@ with yaspin(text="Extracting individual TIFFs") as spinner:
 
 ### Segment our data
 tiff_path.mkdir(exist_ok=True, mode=0o755)
-# processor.segment(data_path, tiff_path, extracted_path, masks_path, pixel_size=pixel_size, channel=arguments['--channel'], params=arguments)
+processor.segment(data_path, tiff_path, extracted_path, masks_path, pixel_size=pixel_size, channel=arguments['--channel'], params=arguments)
 
 ### Assign particles to tracks
 build_tracks = True
@@ -189,22 +189,20 @@ roi_size = arguments['--roi-size']
 
 while build_tracks:
   print("Building tracks with gap size {:d} and roi size {:f}...".format(gap_size, roi_size))
-  # make_tracks(tiff_path, tracks_path, delta_t=arguments['--gap-size'], default_roi_size=arguments['--roi-size'])
+  make_tracks(tiff_path, tracks_path, delta_t=arguments['--gap-size'], default_roi_size=arguments['--roi-size'])
 
   ### Display tracks
   show_gui = True
 
   if show_gui:
+    (ROOT_PATH / 'tmp').mkdir(exist_ok=True, mode=0o755)
+
     preview_video_path = ROOT_PATH / 'tmp/current_tracks.mp4'
     hatchvid.make_video(tiff_path, tracks_path, preview_video_path)
     
     print('Opening a preview of the tracks. Indicate if you like them or want to change the parameters.')
 
-    cmd = [
-      'open',
-      str(ROOT_PATH / 'tmp/current_tracks.mp4')
-    ]
-    subprocess.call(cmd)
+    os.startfile(str(preview_video_path))
 
     change = input('Do you like the tracks? [Y/n]')
 
@@ -236,8 +234,6 @@ if preview_video_path.exists():
 cyto_tracks_path = tiff_path / "cyto-tracks"
 cyto_tracks_path.mkdir(exist_ok=True, mode=0o755)
 data = processor.extract_features(tiff_path, tracks_path, cyto_tracks_path, pixel_size=pixel_size, params=arguments)
-output_file_path = (output_path / (arguments['--output-name'])).resolve()
-data.to_csv(str(output_file_path), header=True, encoding='utf-8', index=None)
 
 arguments['frame_width'] = frame_shape[1]
 arguments['frame_height'] = frame_shape[0]
@@ -246,3 +242,5 @@ data = base_transform(data, arguments)
 
 output_file_path = (output_path / (arguments['--output-name'])).resolve()
 data.to_csv(str(output_file_path), header=True, encoding='utf-8', index=None)
+
+print("Finished!")

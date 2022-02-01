@@ -7,3 +7,4 @@ validate/output/
 validate/validation-data/images
 notebooks/
 tmp/*
+external/tracking/*.egg-info

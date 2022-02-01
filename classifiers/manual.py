@@ -13,8 +13,8 @@ Options:
   -h, --help
   -v, --version
   --start-over  Whether to start over
-  --distance-filter=<int>  [default: 5] If a given cell is ever closer than this value (in um) to another cell, it is excluded
-  --jumpy-filter=<float>  [default: 0.02] If a given cell ever moves faster than this value (in microns/180s), it is excluded
+  --distance-filter=<int>  [default: 0] If a given cell is ever closer than this value (in um) to another cell, it is excluded
+  --jumpy-filter=<float>  [default: 0.0] If a given cell ever moves faster than this value (in microns/180s), it is excluded
 
 Output:
   Generates graphs of each nucleus's predicted and actual events.
@@ -610,6 +610,9 @@ def get_event_summary(data, conf=False):
 
   # Filter out non-events
   cp = cp.loc[( cp['event'] != 'N' ), :]
+
+  if cp.shape[0] <= 0:
+    return False
   
   tqdm.pandas(desc='Generating event summaries')
   events = cp.groupby([ 'data_set', 'particle_id', 'event_id' ]).progress_apply(get_event_info)

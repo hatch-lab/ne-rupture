@@ -293,7 +293,16 @@ def make_tracks(tiff_path, output_path, delta_t=3, default_roi_size=2):
   track_files = output_path.glob("*.tif")
   for track_file in track_files:
     num = int(track_file.stem.replace("mask", ""))
-    track_file.rename((output_path / (str(num).zfill(4) + ".tif")))
+
+    new_name = (str(num).zfill(4) + ".tif")
+
+    if track_file.name == new_name:
+      continue
+
+    if (output_path / new_name).exists():
+      (output_path / new_name).unlink()
+      
+    track_file.rename((output_path / new_name))
 
 def show_tracks(data, tiff_path, delta_t, default_roi_size):
 

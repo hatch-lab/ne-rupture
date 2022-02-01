@@ -108,6 +108,10 @@ def segment(data_path, tiff_path, extracted_path, masks_path, pixel_size=None, c
   mask_files = tiff_path.glob("*-mask.tiff")
   for mask_file in mask_files:
     new_name = mask_file.name.replace("-mask.tiff", ".tif")
+
+    if (masks_path / new_name).exists():
+      (masks_path / new_name).unlink()
+
     mask_file.rename((masks_path / new_name))
 
   # CellProfiler saves things as .tiff
@@ -115,6 +119,10 @@ def segment(data_path, tiff_path, extracted_path, masks_path, pixel_size=None, c
   files = tiff_path.glob("*.tiff")
   for file in files:
     new_name = file.name.replace(".tiff", ".tif")
+
+    if (tiff_path / new_name).exists():
+      (tiff_path / new_name).unlink()
+      
     file.rename((tiff_path / new_name))
 
 def extract_features(tiff_path, tracks_path, cyto_tracks_path, pixel_size=1.0, params={}):
