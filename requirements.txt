@@ -54,7 +54,7 @@ six==1.14.0
 tabulate==0.8.7
 threadpoolctl==3.0.0
 tifffile==2021.1.14
-tqdm==4.45.0
+tqdm==4.62.3
 urllib3==1.26.8
 wxPython==4.1.0
 yaspin==0.16.0
