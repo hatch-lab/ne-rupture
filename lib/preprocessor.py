@@ -46,17 +46,15 @@ def base_transform(data, params):
   data['data_set'] = data_set
 
   # Filter short tracks
-  if np.max(data['frame'])*frame_rate > 28800:
-    data = data.groupby([ 'data_set', 'particle_id' ]).filter(lambda x: x['frame_rate'].iloc[0]*len(x) > 28800)
-  else:
-    # Need at least 4 datapoints fo fit splines
-    data = data.groupby([ 'data_set', 'particle_id' ]).filter(lambda x: len(x) > 3)
-
+  data = data.groupby([ 'data_set', 'particle_id' ]).filter(lambda x: len(x) > params['--filter-tracks'])
+  
   # Filter out particles that are too near the edge
-  data = data.groupby([ 'data_set', 'particle_id' ]).filter(
-    lambda x, frame_width, frame_height: np.min(x['x_px']) >= 50 and np.max(x['x_px']) <= frame_width-50 and np.min(x['y_px']) >= 50 and np.max(x['y_px']) <= frame_width-50, 
-    frame_width = frame_width, frame_height=frame_height
-  )
+  if params['--edge-filter'] > 0:
+    data = data.groupby([ 'data_set', 'particle_id' ]).filter(
+      lambda x, frame_width, frame_height: 
+        np.min(x['x_px']) >= params['--edge-filter'] and np.max(x['x_px']) <= frame_width-params['--edge-filter'] and np.min(x['y_px']) >= params['--edge-filter'] and np.max(x['y_px']) <= frame_height-params['--edge-filter'], 
+      frame_width = frame_width, frame_height=frame_height
+    )
 
   # Sort data
   data = data.sort_values(by=[ 'data_set', 'particle_id', 'time' ])

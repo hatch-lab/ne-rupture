@@ -82,7 +82,25 @@ Installing Homebrew package manager
 printf '
 Installing software packages
 '
-brew install python@3.8 git wget cairo coreutils mysql java11
+brew install python@3.8 git wget cairo coreutils mysql
+
+# Symlink JDK
+if [ -d "/Library/Java/JavaVirtualMachines/openjdk-11.jdk" ]; then
+  echo ""
+else
+  printf '
+  Installing Java11. You may need to enter your password
+  '
+  sudo ln -sfn /usr/local/opt/openjdk@11/libexec/openjdk.jdk /Library/Java/JavaVirtualMachines/openjdk-11.jdk
+fi
+
+echo "export JAVA_HOME=\"/Library/Java/JavaVirtualMachines/openjdk-11.jdk/Contents/Home/\"" >> ~/.bash_profile
+echo "export PATH=\"\${JAVA_HOME}/bin:\$PATH\"" >> ~/.bash_profile
+echo "export CPPFLAGS=\"-I/usr/local/opt/openjdk@11/include\"" >> ~/.bash_profile
+
+echo "export JAVA_HOME=\"/Library/Java/JavaVirtualMachines/openjdk-11.jdk/Contents/Home/\"" >> ~/.zshrc
+echo "export PATH=\"\${JAVA_HOME}/bin:\$PATH\"" >> ~/.zshrc
+echo "export CPPFLAGS=\"-I/usr/local/opt/openjdk@11/include\"" >> ~/.zshrc
 
 # Install R and XQuartz
 install_package "R" ${R_package} ${R_sig}
@@ -114,7 +132,7 @@ echo "source \"\${HATCH_LAB_NE_RUPTURE_TOOL_PATH}/bash_functions.sh\"" >> ~/.zsh
 source ~/.zshrc
 
 # Set up virtual env
-python3 -m venv .venv
+/usr/local/opt/python@3.8/bin/python3 -m venv .venv
 VIRTUAL_ENV="${HATCH_LAB_NE_RUPTURE_TOOL_PATH}/.venv"
 PATH="${VIRTUAL_ENV}/bin:${PATH}"
 

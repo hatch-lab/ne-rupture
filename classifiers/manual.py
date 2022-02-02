@@ -14,7 +14,7 @@ Options:
   -v, --version
   --start-over  Whether to start over
   --distance-filter=<int>  [default: 0] If a given cell is ever closer than this value (in um) to another cell, it is excluded
-  --jumpy-filter=<float>  [default: 0.0] If a given cell ever moves faster than this value (in microns/180s), it is excluded
+  --jumpy-filter=<float>  [default: 0.0] If a given cell ever moves faster than this value (in microns/frame), it is excluded
 
 Output:
   Generates graphs of each nucleus's predicted and actual events.

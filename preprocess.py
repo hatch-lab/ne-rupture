@@ -18,10 +18,12 @@ Options:
   --data-dir=<string>  Where to find the raw data. Typically determined by the preprocessor you've selected.
   --channel=<int>  [default: 1] The channel to keep (ie, the NLS-3xGFP channel)
   --data-set=<string>  The unique identifier for this data set. If none is supplied, the base file name of each TIFF will be used.
-  --pixel-size=<float>  [default: 1] Pixels per micron. If 0, will attempt to detect automatically.
+  --pixel-size=<float>  [default: 0] Pixels per micron. If 0, will attempt to detect automatically.
   --frame-rate=<int>  [default: 180] The seconds that elapse between frames
   --gap-size=<int>  [default: 5] The maximum gap size when building tracks
   --roi-size=<float>  [default: 2.0] Given a segment at time t+1, will search for a shape to match one found at time t. The search distance is the median shape size*roi-size
+  --min-track-length=<int>  [default: 5] Any tracks with fewer than these frames will be filtered out. The minimum track length must always be at least 4, in order to generate derivatives.
+  --edge-filter=<int>  [default: 50] Filters cells that are near the edge of the frame, in pixels.
 
 Output:
   A CSV file with processed data
@@ -86,7 +88,9 @@ schema = {
   '--help': Or(None, bool),
   '--version': Or(None, bool),
   '--gap-size': And(Use(int), lambda n: n > 0, error='--gap-size must be > 0'),
-  '--roi-size': And(Use(float), lambda n: n >= 1, error='--roi-size must be >= 1'),
+  '--roi-size': And(Use(float), lambda n: n >= 1, error='--roi-size must be >= 1.0'),
+  '--min-track-length': And(Use(int), lambda n: n >= 4, error='--min-track-length must be >= 4 frames'),
+  '--edge-filter': And(Use(int), lambda n: n >= 0, error='--edge-filter must be >= 0 px'),
   Optional('<args>'): lambda n: True,
   Optional('--'): lambda n: True
 }
@@ -175,6 +179,9 @@ with yaspin(text="Extracting individual TIFFs") as spinner:
   spinner.write("Found " + str(frame_i-1) + " images")
   spinner.ok("✅")
 
+if frame_i-1 < arguments['--gap-size']:
+  print(colorize("red", "--gap-size must be less than the total number of frames"))
+  exit(1)
 
 ### Segment our data
 tiff_path.mkdir(exist_ok=True, mode=0o755)

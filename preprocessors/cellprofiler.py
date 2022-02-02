@@ -296,8 +296,3 @@ def extract_features(tiff_path, tracks_path, cyto_tracks_path, pixel_size=1.0, p
   (cyto_tracks_path / "ShrunkenNuclei.csv").unlink()
 
   return data
-
-def id_track(group):
-  group['track_id'] = (group['frame'].diff() > 1).cumsum()
-
-  return group

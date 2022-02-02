@@ -19,7 +19,7 @@ Options:
   --event-summary-name=<string>  [default: event-summary.csv] The name of the CSV file for data summarized by events
   --output-dir=<string>  [default: output] The name of the subdirectory in which to store output
   --input-dir=<string>  [default: input] The name of the subdirectory in which to find the inpute CSV file
-  --skip-graphs  Whether to skip producing graphs or videos
+  --skip-videos  Whether to skip producing graphs or videos
   --img-dir=<string>  [default: images] The subdirectory that contains TIFF images of each frame, for outputting videos.
   --conf=<string>  Override configuration options in conf.json with a JSON string.
   --draw-tracks  [Default: False] Whether to overlay tracks on the annotated movies
@@ -80,7 +80,7 @@ schema = {
   '--cell-summary-name': len,
   '--output-dir': len,
   '--input-dir': len,
-  Optional('--skip-graphs'): bool,
+  Optional('--skip-videos'): bool,
   Optional('--draw-tracks'): bool,
   '--img-dir': len,
   '--conf': Or(None, len),
@@ -109,7 +109,7 @@ data_file_path = input_path / (arguments['--input-name'])
 output_name = arguments['--output-name']
 event_summary_name = arguments['--event-summary-name']
 cell_summary_name = arguments['--cell-summary-name']
-skip_graphs = True if arguments['--skip-graphs'] else False
+skip_graphs = True if arguments['--skip-videos'] else False
 draw_tracks = True if arguments['--draw-tracks'] else False
 conf = json.loads(arguments['--conf']) if arguments['--conf'] else False
 
