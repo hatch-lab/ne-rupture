@@ -31,6 +31,7 @@ Output:
 
 import sys
 import os
+import shutil
 from pathlib import Path
 from importlib import import_module
 import builtins
@@ -99,7 +100,7 @@ schema.update(processor_schema)
 try:
   arguments = Schema(schema).validate(arguments)
 except SchemaError as error:
-  print(error)
+  print(colorize("red", error))
   exit(1)
 
 ### Arguments and inputs
@@ -118,7 +119,6 @@ arguments['data_path'] = data_path
 arguments['tiff_path'] = tiff_path
 
 arguments['--pixel-size'] = arguments['--pixel-size'] if arguments['--pixel-size'] > 0 else None
-pixel_size = arguments['--pixel-size']
 
 ### Extract TIFFs to make single channel, single frame TIFFs
 tiff_path.mkdir(mode=0o755, parents=True, exist_ok=True)
@@ -143,25 +143,23 @@ files = sorted(set(files), key=lambda x: str(len(str(x))) + str(x).lower())
 frame_shape = None
 frame_i = 1
 
+with tifffile.TiffFile(files[0]) as tif:
+  if arguments['--pixel-size'] is None:
+    if 'XResolution' in tif.pages[0].tags:
+      arguments['--pixel-size'] = tif.pages[0].tags['XResolution'].value
+
+      if len(arguments['--pixel-size']) == 2:
+        arguments['--pixel-size'] = arguments['--pixel-size'][0]/arguments['--pixel-size'][1]
+
+      arguments['--pixel-size'] = 1/arguments['--pixel-size']
+    else:
+      # We need pixel size specified
+      arguments['--pixel-size'] = float(input("Microns/pixel could not be determined from the TIFFs.\nCommon values are:\nLeica SD 40x: " + str(0.2538) + "\nLeica SD 20x: " + str(0.5089) + "\nPlease enter a spatial calibration value (um/pixel):"))
+
 with yaspin(text="Extracting individual TIFFs") as spinner:
   spinner.spinner = Spinners.dots8
   for file in files:
-    with tifffile.TiffFile(file) as tif:
-
-      if pixel_size is None and 'XResolution' in tif.pages[0].tags:
-        pixel_size = tif.pages[0].tags['XResolution'].value
-        dtype = tif.pages[0].tags['XResolution'].dtype
-
-        if len(pixel_size) == 2:
-          pixel_size = pixel_size[0]
-
-        if dtype == '1I':
-          # Convert from inches to microns
-          pixel_size = pixel_size*3.937E-5
-        elif dtype == '2I':
-          # Convert from meters to microns
-          pixel_size = pixel_size*1E-6
-
+    with tifffile.TiffFile(files[0]) as tif:
       for i in range(len(tif.pages)):
         img = tif.pages[i].asarray()
 
@@ -174,7 +172,7 @@ with yaspin(text="Extracting individual TIFFs") as spinner:
           frame_shape = img.shape
 
         file_name = str(frame_i).zfill(4) + ".tif"
-        tifffile.TiffWriter(str(extracted_path / file_name)).save(img, resolution=(pixel_size, pixel_size, None))
+        tifffile.TiffWriter(str(extracted_path / file_name)).save(img, resolution=(1/arguments['--pixel-size'], 1/arguments['--pixel-size'], None))
         frame_i += 1
   spinner.write("Found " + str(frame_i-1) + " images")
   spinner.ok("✅")
@@ -185,7 +183,7 @@ if frame_i-1 < arguments['--gap-size']:
 
 ### Segment our data
 tiff_path.mkdir(exist_ok=True, mode=0o755)
-processor.segment(data_path, tiff_path, extracted_path, masks_path, pixel_size=pixel_size, channel=arguments['--channel'], params=arguments)
+processor.segment(data_path, tiff_path, extracted_path, masks_path, pixel_size=arguments['--pixel-size'], channel=arguments['--channel'], params=arguments)
 
 ### Assign particles to tracks
 build_tracks = True
@@ -240,7 +238,7 @@ if preview_video_path.exists():
 ### Extract features
 cyto_tracks_path = tiff_path / "cyto-tracks"
 cyto_tracks_path.mkdir(exist_ok=True, mode=0o755)
-data = processor.extract_features(tiff_path, tracks_path, cyto_tracks_path, pixel_size=pixel_size, params=arguments)
+data = processor.extract_features(tiff_path, tracks_path, cyto_tracks_path, pixel_size=arguments['--pixel-size'], params=arguments)
 
 arguments['frame_width'] = frame_shape[1]
 arguments['frame_height'] = frame_shape[0]
