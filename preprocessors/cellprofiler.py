@@ -172,6 +172,10 @@ def extract_features(tiff_path, tracks_path, cyto_tracks_path, pixel_size=1.0, p
   mask_files = cyto_tracks_path.glob("*-cyto-mask.tiff")
   for mask_file in mask_files:
     new_name = mask_file.name.replace("-cyto-mask.tiff", ".tif")
+
+    if (cyto_tracks_path / new_name).exists():
+      (cyto_tracks_path / new_name).unlink()
+      
     mask_file.rename((cyto_tracks_path / new_name))
 
   cp_data = pd.read_csv(str(cyto_tracks_path / "ShrunkenNuclei.csv"), header=None)

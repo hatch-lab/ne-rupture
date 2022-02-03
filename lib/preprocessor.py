@@ -55,7 +55,7 @@ def base_transform(data, params):
   data['data_set'] = data_set
 
   # Filter short tracks
-  data = data.groupby([ 'data_set', 'particle_id' ]).filter(lambda x: len(x) > params['--filter-tracks'])
+  data = data.groupby([ 'data_set', 'particle_id' ]).filter(lambda x: len(x) > params['--min-track-length'])
   
   # Filter out particles that are too near the edge
   if params['--edge-filter'] > 0:
