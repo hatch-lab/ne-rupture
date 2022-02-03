@@ -1,6 +1,7 @@
 import sys
 import os
 from pathlib import Path
+import subprocess
 
 ROOT_PATH = Path(__file__ + "/../..").resolve()
 
@@ -16,6 +17,14 @@ sys.path.append(str(ROOT_PATH / ("external/tracking/")))
 from tracker.extract_data import get_img_files, get_indices_pandas
 from tracker.export import ExportResults
 from tracker.tracking import TrackingConfig, MultiCellTracker
+
+def open_file(filename):
+  """ From https://stackoverflow.com/questions/17317219/is-there-an-platform-independent-equivalent-of-os-startfile/17317468#17317468 """
+  if sys.platform == "win32":
+    os.startfile(filename)
+  else:
+    opener = "open" if sys.platform == "darwin" else "xdg-open"
+    subprocess.call([opener, filename])
 
 def base_transform(data, params):
   """

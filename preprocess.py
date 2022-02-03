@@ -43,7 +43,7 @@ sys.path.append(str(ROOT_PATH))
 from docopt import docopt
 from lib.version import get_version
 from lib.output import colorize
-from lib.preprocessor import base_transform, make_tracks
+from lib.preprocessor import base_transform, make_tracks, open_file
 
 import math
 import lib.video as hatchvid
@@ -209,7 +209,7 @@ while build_tracks:
     
     print('Opening a preview of the tracks. Indicate if you like them or want to change the parameters.')
 
-    os.startfile(str(preview_video_path))
+    open_file(str(preview_video_path))
 
     change = input('Do you like the tracks? [Y/n]')
 

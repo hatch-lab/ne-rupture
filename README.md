@@ -69,7 +69,7 @@ This program has a number of options. By default, the first channel of each imag
 
 If you want to use a different tracking gap size, 3 frames instead of the default 5, execute:
 
-`python preprocess.py matlab path/to/my/experiment-folder --gap-size=3`
+`python segment path/to/my/experiment-folder --gap-size=3`
 
 Options can also be combined. The default assumes a 3 min pass time, but if you had a 30 s pass time and wanted to extract the third channel, you would execute:
 
@@ -83,6 +83,8 @@ Options can also be combined. The default assumes a 3 min pass time, but if you 
 - `--roi-size` The size of the search region when tracking objects, as a factor of the median object size (see below for more). Defaults to 2.0
 - `--segment-pipeline` The CellProfiler pipeline to use for segmenting objects (defaults to ./preprocessors/cellprofiler/segment.cppipe)
 - `--features-pipeline` The CellProfiler pipeline to use for extracting features (defaults to ./preprocessors/cellprofiler/extract.cppipe)
+- `--min-track-length`  Any tracks with fewer than these frames will be filtered out; the minimum track length must always be at least 4, in order to generate derivatives (defaults to 5)
+- `--edge-filter`  Filters cells that are near the edge of the frame, in pixels (defaults to 50)
 
 ### `annotate`
 
