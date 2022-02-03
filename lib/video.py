@@ -212,138 +212,152 @@ def make_video(tiff_path, mask_path, output_file_path, graph_path=None, frame_ra
     pbar = tqdm(image_files, desc=description)
   else:
     pbar = image_files
+
+  
+  if data is not None:
+    max_frame = np.max(data['frame'])
+    min_frame = np.min(data['frame'])
+  else:
+    max_frame = len(image_files)
+    min_frame = 1
+
   for image_file in pbar:
-    image = Image.open(str(image_file))
-    tracks_file = mask_path / image_file.name
-    if not tracks_file.exists():
-      raise ValueError("No mask matches " + str(image_file.name) + " in " + str(mask_path))
-    mask = Image.open(str(tracks_file))
+    with Image.open(str(image_file)) as image:
+      tracks_file = mask_path / image_file.name
+      if not tracks_file.exists():
+        raise ValueError("No mask matches " + str(image_file.name) + " in " + str(mask_path))
+      mask = Image.open(str(tracks_file))
 
-    frame_idx = int(image_file.stem)  
+      frame_idx = int(image_file.stem)
 
-    # Assign colors to each label
-    props = pd.DataFrame(regionprops_table(np.asarray(mask), properties=('label', 'centroid')))
-    props.rename(columns={ 'centroid-0': 'y', 'centroid-1': 'x' }, inplace=True)
-    if np.max(props['label']) > lut.shape[0]:
-      new_luts = lut.sample(np.max(props['label'])-lut.shape[0], replace=True, ignore_index=True)
-      lut = pd.concat([lut, new_luts], ignore_index=True)
-    props = props.merge(lut, left_on='label', right_index=True)
+      # Skip if not in data
+      if data is not None and frame_idx is not in data['frame'].unique():
+        continue
 
-    # Add mask overlay
-    r = props['red_float'].tolist()
-    g = props['green_float'].tolist()
-    b = props['blue_float'].tolist()
-    colors = list(zip(r, g, b))
+      # Assign colors to each label
+      props = pd.DataFrame(regionprops_table(np.asarray(mask), properties=('label', 'centroid')))
+      props.rename(columns={ 'centroid-0': 'y', 'centroid-1': 'x' }, inplace=True)
+      if np.max(props['label']) > lut.shape[0]:
+        new_luts = lut.sample(np.max(props['label'])-lut.shape[0], replace=True, ignore_index=True)
+        lut = pd.concat([lut, new_luts], ignore_index=True)
+      props = props.merge(lut, left_on='label', right_index=True)
 
-    if annotate:
-      np_image = label2rgb(np.asarray(mask), image=np.asarray(image), colors=colors, alpha=0.4)
-      image = Image.fromarray((np_image*255).astype(np.uint8))
+      # Add mask overlay
+      r = props['red_float'].tolist()
+      g = props['green_float'].tolist()
+      b = props['blue_float'].tolist()
+      colors = list(zip(r, g, b))
 
-    # Annotate the frame if needed
-    if annotate and data is not None:
-      image = _annotate_image(image, data.loc[(data['frame'] == frame_idx)])
+      if annotate:
+        np_image = label2rgb(np.asarray(mask), image=np.asarray(image), colors=colors, alpha=0.4)
+        image = Image.fromarray((np_image*255).astype(np.uint8))
 
-    # Build tracks if necessary
-    if draw_tracks:
-      if coords is None:
-        coords = props.copy()
-        coords['frame'] = frame_idx
-      else:
-        new_coords = props.copy()
-        new_coords['frame'] = frame_idx
-        new_coords = new_coords[[ 'label', 'x', 'y', 'red', 'green', 'blue', 'frame' ]]
-        coords = coords[[ 'label', 'x', 'y', 'red', 'green', 'blue', 'frame' ]]
+      # Annotate the frame if needed
+      if annotate and data is not None:
+        image = _annotate_image(image, data.loc[(data['frame'] == frame_idx)])
 
-        coords = pd.concat([ coords, new_coords ])
-        coords = coords.loc[(coords['frame'] > frame_idx-15)]
-        coords.sort_values(['label', 'frame'], inplace=True, ascending=False, ignore_index=True)
-        alphas = pd.DataFrame({ 
-          'frame': list(range(frame_idx-14, frame_idx+1)),
-          'alpha': [
-            0,
-            26,
-            51,
-            77,
-            102,
-            128,
-            153,
-            179,
-            204,
-            230,
-            255,
-            255,
-            255,
-            255,
-            255
-          ] 
-        })
-        coords = coords.merge(alphas, on='frame', how='left')
+      # Build tracks if necessary
+      if draw_tracks:
+        if coords is None:
+          coords = props.copy()
+          coords['frame'] = frame_idx
+        else:
+          new_coords = props.copy()
+          new_coords['frame'] = frame_idx
+          new_coords = new_coords[[ 'label', 'x', 'y', 'red', 'green', 'blue', 'frame' ]]
+          coords = coords[[ 'label', 'x', 'y', 'red', 'green', 'blue', 'frame' ]]
 
-        track_draw = ImageDraw.Draw(image, 'RGBA')
+          coords = pd.concat([ coords, new_coords ])
+          coords = coords.loc[(coords['frame'] > frame_idx-15)]
+          coords.sort_values(['label', 'frame'], inplace=True, ascending=False, ignore_index=True)
+          alphas = pd.DataFrame({ 
+            'frame': list(range(frame_idx-14, frame_idx+1)),
+            'alpha': [
+              0,
+              26,
+              51,
+              77,
+              102,
+              128,
+              153,
+              179,
+              204,
+              230,
+              255,
+              255,
+              255,
+              255,
+              255
+            ] 
+          })
+          coords = coords.merge(alphas, on='frame', how='left')
 
-        for row in coords.itertuples():
-          old_coords = coords.loc[((coords['frame'] == (row.frame-1)) & (coords['label'] == row.label))]
-          if not old_coords.empty:
-            old_x = old_coords['x'].iloc[0]
-            old_y = old_coords['y'].iloc[0]
-            track_draw.line([ old_x, old_y, row.x, row.y ], fill=(row.red, row.green, row.blue, row.alpha), width=2)
+          track_draw = ImageDraw.Draw(image, 'RGBA')
 
-    # Crop the frame if need be
-    if crop is not False and data is not None:
-      draw_tracks = False
-      f_data = data.loc[(data['frame'] == frame_idx)]
-      if f_data.empty:
-        # A missing frame, fill in with a blank from
-        image = Image.new('RGB', crop, (0,0,0))
-      else:
-        crop_x = f_data['x_px'].iloc[0]
-        crop_y = f_data['y_px'].iloc[0]
+          for row in coords.itertuples():
+            old_coords = coords.loc[((coords['frame'] == (row.frame-1)) & (coords['label'] == row.label))]
+            if not old_coords.empty:
+              old_x = old_coords['x'].iloc[0]
+              old_y = old_coords['y'].iloc[0]
+              track_draw.line([ old_x, old_y, row.x, row.y ], fill=(row.red, row.green, row.blue, row.alpha), width=2)
 
-        image = Image.fromarray(crop_frame(np.asarray(image), crop_x, crop_y, crop[0], crop[1]))
+      # Crop the frame if need be
+      if crop is not False and data is not None:
+        draw_tracks = False
+        f_data = data.loc[(data['frame'] == frame_idx)]
+        if f_data.empty:
+          # A missing frame, fill in with a blank from
+          image = Image.new('RGB', crop, (0,0,0))
+        else:
+          crop_x = f_data['x_px'].iloc[0]
+          crop_y = f_data['y_px'].iloc[0]
 
-    if scale != 1.0:
-      image = image.resize((int(round(scale*image.size[0])), int(round(scale*image.size[1]))), resample=Image.BILINEAR)
+          image = Image.fromarray(crop_frame(np.asarray(image), crop_x, crop_y, crop[0], crop[1]))
 
-    # Add padding for text, graph
-    if graph_path is not None:
-      graph = Image.open(str(graph_path))
-      graph_draw = ImageDraw.Draw(graph)
+      if scale != 1.0:
+        image = image.resize((int(round(scale*image.size[0])), int(round(scale*image.size[1]))), resample=Image.BILINEAR)
 
-      # Draw a line on the graph
-      x = int(round(graph.size[0]*(frame_idx/len(image_files))))
-      graph_draw.line((x, 0, x, graph.size[1]), fill=(255,255,255), width=1)
-      bottom_padding = graph.size[1]
+      # Add padding for text, graph
+      if graph_path is not None:
+        graph = Image.open(str(graph_path))
+        graph_draw = ImageDraw.Draw(graph)
 
-    rgba_image = Image.new('RGBA', (image.size[0], image.size[1]+top_padding+bottom_padding), (0,0,0,0))
-    rgba_image.paste(image, ( 0, top_padding ))
-    if graph_path is not None:
-      rgba_image.paste(graph, ( 0, top_padding+image.size[1] ))
-    image = rgba_image
+        # Draw a line on the graph
+        x = int(round(graph.size[0]*((frame_idx-min_frame)/(max_frame-min_frame))))
+        graph_draw.line((x, 0, x, graph.size[1]), fill=(255,255,255), width=1)
+        bottom_padding = graph.size[1]
 
-    # Draw text and progress bar
-    font_color = 'rgb(255,255,255)'
-    small_font = ImageFont.truetype(str(FONT_PATH), size=14)
-    draw = ImageDraw.Draw(image)
+      rgba_image = Image.new('RGBA', (image.size[0], image.size[1]+top_padding+bottom_padding), (0,0,0,0))
+      rgba_image.paste(image, ( 0, top_padding ))
+      if graph_path is not None:
+        rgba_image.paste(graph, ( 0, top_padding+image.size[1] ))
+      image = rgba_image
 
-    time = frame_idx*frame_rate
+      # Draw text and progress bar
+      font_color = 'rgb(255,255,255)'
+      small_font = ImageFont.truetype(str(FONT_PATH), size=14)
+      draw = ImageDraw.Draw(image)
 
-    hours = math.floor(time / 3600)
-    minutes = math.floor((time - (hours*3600)) / 60)
-    seconds = math.floor((time - (hours*3600)) % 60)
+      time = frame_idx*frame_rate
 
-    label = "{:02d}h{:02d}'{:02d}\" ({:d})".format(hours, minutes, seconds, frame_idx)
-    draw.text((10, 10), label, fill=font_color, font=small_font)
+      hours = math.floor(time / 3600)
+      minutes = math.floor((time - (hours*3600)) / 60)
+      seconds = math.floor((time - (hours*3600)) % 60)
 
-    # Add progress bar
-    width = int(round(frame_idx/len(image_files)*image.size[0]))
-    draw.rectangle([ (0, 0), (width, 5) ], fill=font_color)
+      label = "{:02d}h{:02d}'{:02d}\" ({:d})".format(hours, minutes, seconds, frame_idx)
+      draw.text((10, 10), label, font=small_font)
 
-    if writer is None:
-      writer = cv2.VideoWriter(str(output_file_path), fourcc, 10, (image.size[0], image.size[1]), True)
+      # Add progress bar
+      width = int(round((frame_idx-min_frame)/(max_frame-min_frame)*image.size[0]))
+      draw.rectangle([ (0, 0), (width, 5) ], fill=font_color)
 
-    image = np.asarray(image.convert('RGB'))
-    image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-    writer.write(image)
+      if writer is None:
+        writer = cv2.VideoWriter(str(output_file_path), fourcc, 10, (image.size[0], image.size[1]), True)
+
+      image = np.asarray(image.convert('RGB'))
+      image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+      writer.write(image)
+      mask.close()
   writer.release()
 
 def _annotate_image(image, f_data):
