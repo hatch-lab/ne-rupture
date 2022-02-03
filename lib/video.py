@@ -231,7 +231,7 @@ def make_video(tiff_path, mask_path, output_file_path, graph_path=None, frame_ra
       frame_idx = int(image_file.stem)
 
       # Skip if not in data
-      if data is not None and frame_idx is not in data['frame'].unique():
+      if data is not None and frame_idx not in data['frame'].unique():
         continue
 
       # Assign colors to each label
