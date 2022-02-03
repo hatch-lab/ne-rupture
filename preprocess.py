@@ -173,7 +173,7 @@ if arguments['--pixel-size'] is None:
 with yaspin(text="Extracting individual TIFFs") as spinner:
   spinner.spinner = Spinners.dots8
   for file in files:
-    with tifffile.TiffFile(files[0]) as tif:
+    with tifffile.TiffFile(file) as tif:
       for i in range(len(tif.pages)):
         img = tif.pages[i].asarray()
 
