@@ -45,9 +45,10 @@ from docopt import docopt
 from lib.version import get_version
 from lib.output import colorize
 from lib.preprocessor import base_transform, make_tracks, open_file
-
-import math
 import lib.video as hatchvid
+
+import defusedxml.ElementTree as ET
+import math
 import numpy as np
 import pandas as pd
 import tifffile
@@ -143,16 +144,29 @@ files = sorted(set(files), key=lambda x: str(len(str(x))) + str(x).lower())
 frame_shape = None
 frame_i = 1
 
-with tifffile.TiffFile(files[0]) as tif:
-  if arguments['--pixel-size'] is None:
-    if 'XResolution' in tif.pages[0].tags:
+if arguments['--pixel-size'] is None:
+  with tifffile.TiffFile(files[0]) as tif:
+    if 'spatial-calibration-x' in tif.pages[0].description:
+      # Try from the description
+
+      metadata = ET.fromstring(tif.pages[0].description)
+      plane_data = metadata.find("PlaneInfo")
+
+      for prop in plane_data.findall("prop"):
+        if prop.get("id") == "spatial-calibration-x":
+          arguments['--pixel-size'] = float(prop.get("value"))
+          break
+    
+    elif 'XResolution' in tif.pages[0].tags:
+      # Try from the XResolution tag
       arguments['--pixel-size'] = tif.pages[0].tags['XResolution'].value
 
       if len(arguments['--pixel-size']) == 2:
         arguments['--pixel-size'] = arguments['--pixel-size'][0]/arguments['--pixel-size'][1]
 
       arguments['--pixel-size'] = 1/arguments['--pixel-size']
-    else:
+
+    if arguments['--pixel-size'] is None:
       # We need pixel size specified
       arguments['--pixel-size'] = float(input("Microns/pixel could not be determined from the TIFFs.\nCommon values are:\nLeica SD 40x: " + str(0.2538) + "\nLeica SD 20x: " + str(0.5089) + "\nPlease enter a spatial calibration value (um/pixel):"))
 
