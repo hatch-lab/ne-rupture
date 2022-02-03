@@ -166,9 +166,9 @@ if arguments['--pixel-size'] is None:
 
       arguments['--pixel-size'] = 1/arguments['--pixel-size']
 
-    if arguments['--pixel-size'] is None:
-      # We need pixel size specified
-      arguments['--pixel-size'] = float(input("Microns/pixel could not be determined from the TIFFs.\nCommon values are:\nLeica SD 40x: " + str(0.2538) + "\nLeica SD 20x: " + str(0.5089) + "\nPlease enter a spatial calibration value (um/pixel):"))
+if arguments['--pixel-size'] is None:
+  # We need pixel size specified
+  arguments['--pixel-size'] = float(input("Microns/pixel could not be determined from the TIFFs.\nCommon values are:\nLeica SD 40x: " + str(0.2538) + "\nLeica SD 20x: " + str(0.5089) + "\nPlease enter a spatial calibration value (um/pixel):"))
 
 with yaspin(text="Extracting individual TIFFs") as spinner:
   spinner.spinner = Spinners.dots8
