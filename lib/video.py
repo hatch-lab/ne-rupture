@@ -12,7 +12,7 @@ from tqdm import tqdm
 import subprocess
 
 ROOT_PATH = builtins.ROOT_PATH
-FONT_PATH = (ROOT_PATH / ("lib/fonts/font.ttf")).resolve()
+FONT_PATH = (ROOT_PATH / ("lib/fonts/IBMPlexSans-Regular.ttf")).resolve()
 
 CIRCLE_COLORS     = {
   "N": 'rgb(50,50,50)',

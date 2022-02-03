@@ -49,7 +49,7 @@ NEED_TIFFS = True
 SAVES_INTERMEDIATES = True
 NAME = "manual"
 CONF_PATH = (ROOT_PATH / ("classifiers/manual/conf.json")).resolve()
-FONT_PATH = (ROOT_PATH / ("lib/fonts/font.ttf")).resolve()
+FONT_PATH = (ROOT_PATH / ("lib/fonts/IBMPlexSans-Regular.ttf")).resolve()
 
 def get_schema():
   return {
