@@ -194,6 +194,9 @@ tracks_path.mkdir(exist_ok=True, mode=0o755)
 gap_size = arguments['--gap-size']
 roi_size = arguments['--roi-size']
 
+(ROOT_PATH / 'tmp').mkdir(exist_ok=True, mode=0o755)
+preview_video_path = ROOT_PATH / 'tmp/current_tracks.mp4'
+
 while build_tracks:
   print("Building tracks with gap size {:d} and roi size {:f}...".format(gap_size, roi_size))
   make_tracks(tiff_path, tracks_path, delta_t=arguments['--gap-size'], default_roi_size=arguments['--roi-size'])
@@ -202,9 +205,6 @@ while build_tracks:
   show_gui = True
 
   if show_gui:
-    (ROOT_PATH / 'tmp').mkdir(exist_ok=True, mode=0o755)
-
-    preview_video_path = ROOT_PATH / 'tmp/current_tracks.mp4'
     hatchvid.make_video(tiff_path, tracks_path, preview_video_path)
     
     print('Opening a preview of the tracks. Indicate if you like them or want to change the parameters.')
@@ -250,4 +250,7 @@ data = base_transform(data, arguments)
 output_file_path = (output_path / (arguments['--output-name'])).resolve()
 data.to_csv(str(output_file_path), header=True, encoding='utf-8', index=None)
 
+print("Removing temporary files...")
+shutil.rmtree(str(extracted_path))
+shutil.rmtree(str(masks_path))
 print("Finished!")
