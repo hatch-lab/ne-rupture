@@ -22,8 +22,9 @@ Options:
   --frame-rate=<int>  [default: 180] The seconds that elapse between frames
   --gap-size=<int>  [default: 5] The maximum gap size when building tracks
   --roi-size=<float>  [default: 2.0] Given a segment at time t+1, will search for a shape to match one found at time t. The search distance is the median shape size*roi-size
-  --min-track-length=<int>  [default: 5] Any tracks with fewer than these frames will be filtered out. The minimum track length must always be at least 4, in order to generate derivatives.
+  --min-track-length=<int>  [default: 5] Any tracks with fewer than these frames will be filtered out. The minimum track length must always be at least 4, in order to generate derivatives. Set to 0 to skip any track filtering.
   --edge-filter=<int>  [default: 50] Filters cells that are near the edge of the frame, in pixels.
+  --accept-tracks  [default: False] Whether to just accept the tracks; skip asking to check
 
 Output:
   A CSV file with processed data
@@ -32,7 +33,7 @@ Output:
 import sys
 import os
 import shutil
-from pathlib import Path
+from pathlib import Path, PurePath
 from importlib import import_module
 import builtins
 
@@ -52,6 +53,9 @@ import math
 import numpy as np
 import pandas as pd
 import tifffile
+import json
+import copy
+from time import sleep
 
 from yaspin import yaspin
 from yaspin.spinners import Spinners
@@ -65,6 +69,7 @@ arguments = docopt(__doc__, version=get_version(), options_first=True)
 processor_name = re.sub(r'[^a-zA-Z0-9\-\_\.\+]', '', arguments['PROCESSOR'])
 if processor_name != arguments['PROCESSOR']:
   print(colorize("yellow", "Processor has been sanitized to " + processor_name))
+  sleep(3)
 
 if len(processor_name) > 0 and os.path.sep not in processor_name and ((ROOT_PATH / ('preprocessors/' + str(processor_name) + '.py'))).is_file():
   processor = import_module("preprocessors." + processor_name)
@@ -94,7 +99,8 @@ schema = {
   '--min-track-length': And(Use(int), lambda n: n >= 4, error='--min-track-length must be >= 4 frames'),
   '--edge-filter': And(Use(int), lambda n: n >= 0, error='--edge-filter must be >= 0 px'),
   Optional('<args>'): lambda n: True,
-  Optional('--'): lambda n: True
+  Optional('--'): lambda n: True,
+  Optional('--accept-tracks'): bool,
 }
 schema.update(processor_schema)
 
@@ -191,9 +197,14 @@ with yaspin(text="Extracting individual TIFFs") as spinner:
   spinner.write("Found " + str(frame_i-1) + " images")
   spinner.ok("✅")
 
-if frame_i-1 < arguments['--gap-size']:
+if frame_i-1 <= arguments['--gap-size']:
   print(colorize("red", "--gap-size must be less than the total number of frames"))
   exit(1)
+
+if frame_i-1 <= arguments['--min-track-length']:
+  print(colorize("yellow", "--min-track-length is longer than the number of frames. No track filtering will be performed."))
+  arguments['--min-track-length'] = 0
+  sleep(3)
 
 ### Segment our data
 tiff_path.mkdir(exist_ok=True, mode=0o755)
@@ -214,12 +225,13 @@ while build_tracks:
   make_tracks(tiff_path, tracks_path, delta_t=arguments['--gap-size'], default_roi_size=arguments['--roi-size'])
 
   ### Display tracks
-  show_gui = True
+  show_gui = (arguments['--accept-tracks'] is False)
 
   if show_gui:
     hatchvid.make_video(tiff_path, tracks_path, preview_video_path)
     
     print('Opening a preview of the tracks. Indicate if you like them or want to change the parameters.')
+    sleep(2)
 
     open_file(str(preview_video_path))
 
@@ -244,6 +256,8 @@ while build_tracks:
           roi_size = new_roi_size
     else:
       build_tracks = False
+  else:
+    build_tracks = False
 
 # Clean up
 if preview_video_path.exists():
@@ -263,6 +277,19 @@ output_file_path = (output_path / (arguments['--output-name'])).resolve()
 data.to_csv(str(output_file_path), header=True, encoding='utf-8', index=None)
 
 print("Removing temporary files...")
-shutil.rmtree(str(extracted_path))
-shutil.rmtree(str(masks_path))
+try:
+  shutil.rmtree(str(extracted_path))
+  shutil.rmtree(str(masks_path))
+except:
+  print(colorize("yellow"), "Unable to remove temporary files in:\n" + str(extracted_path) + "\n" + str(masks_path))
+
+json_path = output_path / "preprocess.conf.json"
+print("Saving configration options to " + str(json_path))
+with open(str(json_path), 'w') as fp:
+  json_arguments = copy.deepcopy(arguments)
+  for key,arg in arguments.items():
+    if isinstance(arg, PurePath):
+      json_arguments[key] = str(arg)
+  fp.write(json.dumps(json_arguments))
+
 print("Finished!")

@@ -30,7 +30,7 @@ Output:
 """
 import sys
 import os
-from pathlib import Path
+from pathlib import Path, PurePath
 from importlib import import_module
 import builtins
 
@@ -44,7 +44,7 @@ from lib.version import get_version
 from lib.output import colorize
 import lib.video as hatchvid
 import json
-
+import copy
 import re
 
 import numpy as np
@@ -169,6 +169,17 @@ cell_summary = classifier.get_cell_summary(data, conf)
 if isinstance(cell_summary, pd.DataFrame):
   cell_summary.to_csv(str(cell_file_path), header=True, encoding='utf-8', index=None)
 
+json_path = output_path / "classify.conf.json"
+print("Saving configration options to " + str(json_path))
+with open(str(json_path), 'w') as fp:
+  json_arguments = copy.deepcopy(arguments)
+  for key,arg in arguments.items():
+    if isinstance(arg, PurePath):
+      json_arguments[key] = str(arg)
+  fp.write(json.dumps(json_arguments))
+
+print("Finished!")
+
 if not skip_graphs:
   video_path = output_path / "videos"
   video_path.mkdir(mode=0o755, parents=True, exist_ok=True)
@@ -178,3 +189,5 @@ if not skip_graphs:
   )
 
   hatchvid.make_videos(tiff_path, output_file_path, video_path, draw_tracks=draw_tracks)
+
+print("Finished!")

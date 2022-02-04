@@ -55,24 +55,25 @@ def base_transform(data, params):
   data['data_set'] = data_set
 
   # Filter short tracks
-  data = data.groupby([ 'data_set', 'particle_id' ]).filter(lambda x: len(x) > params['--min-track-length'])
+  if params['--min-track-length'] > 0:
+    data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).filter(lambda x: len(x) > params['--min-track-length'])
   
   # Filter out particles that are too near the edge
   if params['--edge-filter'] > 0:
-    data = data.groupby([ 'data_set', 'particle_id' ]).filter(
+    data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).filter(
       lambda x, frame_width, frame_height: 
         np.min(x['x_px']) >= params['--edge-filter'] and np.max(x['x_px']) <= frame_width-params['--edge-filter'] and np.min(x['y_px']) >= params['--edge-filter'] and np.max(x['y_px']) <= frame_height-params['--edge-filter'], 
       frame_width = frame_width, frame_height=frame_height
     )
 
   # Sort data
-  data = data.sort_values(by=[ 'data_set', 'particle_id', 'time' ])
+  data = data.sort_values(by=[ 'data_set', 'particle_id', 'time' ], ignore_index=True)
 
   # Normalize median intensity by average particle intensity/frame
-  data = data.groupby([ 'frame' ]).apply(normalize_intensity, 'median', 'median', 'normalized_median')
-  data = data.groupby([ 'frame' ]).apply(normalize_intensity, 'median', 'mean', 'normalized_mean')
-  data = data.groupby([ 'frame' ]).apply(normalize_intensity, 'median', 'sum', 'normalized_sum')
-  data = data.groupby([ 'frame' ]).apply(normalize_intensity, 'median', 'cyto_mean', 'normalized_cyto_mean')
+  data = data.groupby([ 'frame' ], as_index=False).apply(normalize_intensity, 'median', 'median', 'normalized_median')
+  data = data.groupby([ 'frame' ], as_index=False).apply(normalize_intensity, 'median', 'mean', 'normalized_mean')
+  data = data.groupby([ 'frame' ], as_index=False).apply(normalize_intensity, 'median', 'sum', 'normalized_sum')
+  data = data.groupby([ 'frame' ], as_index=False).apply(normalize_intensity, 'median', 'cyto_mean', 'normalized_cyto_mean')
 
   data = scale(data, 'normalized_median', 'normalized_median')
   data = scale(data, 'normalized_mean', 'normalized_mean')
@@ -80,30 +81,30 @@ def base_transform(data, params):
   data = scale(data, 'normalized_cyto_mean', 'normalized_cyto_mean')
 
   # Scale area of each particle to be between 0 and 1 (relative to itself)
-  data = data.groupby([ 'data_set', 'particle_id' ]).apply(scale, 'area', 'scaled_area')
-  data = data.groupby([ 'data_set', 'particle_id' ]).apply(scale, 'cyto_area', 'scaled_cyto_area')
+  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(scale, 'area', 'scaled_area')
+  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(scale, 'cyto_area', 'scaled_cyto_area')
 
   # Make intensity/sum/area stationary
-  data = data.groupby([ 'data_set', 'particle_id' ]).apply(make_stationary, 'scaled_area', 'stationary_area')
-  data = data.groupby([ 'data_set', 'particle_id' ]).apply(make_stationary, 'scaled_cyto_area', 'stationary_cyto_area')
-  data = data.groupby([ 'data_set', 'particle_id' ]).apply(make_stationary, 'normalized_median', 'stationary_median')
-  data = data.groupby([ 'data_set', 'particle_id' ]).apply(make_stationary, 'normalized_mean', 'stationary_mean')
+  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(make_stationary, 'scaled_area', 'stationary_area')
+  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(make_stationary, 'scaled_cyto_area', 'stationary_cyto_area')
+  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(make_stationary, 'normalized_median', 'stationary_median')
+  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(make_stationary, 'normalized_mean', 'stationary_mean')
   data = data.groupby([ 'data_set', 'particle_id' ]).apply(make_stationary, 'normalized_sum', 'stationary_sum')
-  data = data.groupby([ 'data_set', 'particle_id' ]).apply(make_stationary, 'normalized_cyto_mean', 'stationary_cyto_mean')
+  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(make_stationary, 'normalized_cyto_mean', 'stationary_cyto_mean')
 
   # Interpolate with cubic splines/find derivatives
-  data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'stationary_area', 'area')
-  data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'stationary_cyto_area', 'cyto_area')
-  data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'stationary_median', 'median')
-  data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'stationary_mean', 'mean')
-  data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'stationary_cyto_mean', 'cyto_mean')
-  data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'stationary_sum', 'sum')
-  data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'x', 'x')
-  data = data.groupby([ 'data_set', 'particle_id' ]).apply(fit_spline, 'y', 'y')
-  data = data.groupby([ 'data_set', 'particle_id' ]).apply(find_speed)
+  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(fit_spline, 'stationary_area', 'area')
+  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(fit_spline, 'stationary_cyto_area', 'cyto_area')
+  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(fit_spline, 'stationary_median', 'median')
+  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(fit_spline, 'stationary_mean', 'mean')
+  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(fit_spline, 'stationary_cyto_mean', 'cyto_mean')
+  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(fit_spline, 'stationary_sum', 'sum')
+  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(fit_spline, 'x', 'x')
+  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(fit_spline, 'y', 'y')
+  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(find_speed)
 
   # Find nearest neighbors
-  data = data.groupby([ 'data_set', 'frame' ]).apply(find_nearest_neighbor_distances)
+  data = data.groupby([ 'data_set', 'frame' ], as_index=False).apply(find_nearest_neighbor_distances)
 
   data = data.astype({ 'frame': np.uint64 })
 
@@ -203,10 +204,16 @@ def fit_spline(group, fit_column, new_column_stem):
   Returns:
     Modified Pandas DataFrame
   """
-  fit = interpolate.splrep(group['time'], group[fit_column])
-
   spline_column = new_column_stem + '_spline'
   deriv_column = new_column_stem + '_derivative'
+
+  if group.shape[0] < 4:
+    group[spline_column] = 0.0
+    group[deriv_column] = 0.0
+
+    return group
+
+  fit = interpolate.splrep(group['time'], group[fit_column])
 
   group[spline_column] = interpolate.splev(group['time'], fit)
   
