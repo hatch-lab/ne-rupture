@@ -74,23 +74,24 @@ def process_event_seeds(p_data, conf):
   Returns:
     pd.DataFrame
   """
-  idx = (p_data['event'] != 'N')
-  p_data.loc[idx, 'event_id'] = (p_data.loc[idx,'frame'].diff() > 1).cumsum()
+  new = p_data.copy()
 
+  idx = (new['event'] != 'N')
+  new.loc[idx, 'event_id'] = (new.loc[idx,'frame'].diff() > 0).cumsum()
+  
   # Find event ends
-  p_data = extend_events(p_data, conf)
-
+  extend_events(new, conf)
+  
   # Find when events begin to recover
-  p_data = find_event_recoveries(p_data, conf)
-
+  find_event_recoveries(new, conf)
+  
   # Perform curve-fit for rupture/repair events
-  p_data['repair_k'] = np.nan
-  p_data = fit_re_curves(p_data)
-
+  fit_re_curves(new)
+  
   # Determine event durations
-  p_data = p_data.groupby([ 'event_id', 'event' ]).apply(find_event_durations)
-
-  return p_data
+  find_event_durations(new)
+  
+  return new
 
 @contextlib.contextmanager
 def atomic_write(file_path):
@@ -303,7 +304,7 @@ def extend_events(p_data, conf):
     else:
       event_type = event_type[0]
 
-    if event_type == 'X':
+    if event_type == 'X' or event_type == 'M':
       frame = np.max(p_data.loc[(p_data['event_id'] == event_id), 'frame'])
       p_data.loc[(p_data['frame'] >= frame), 'event'] = event_type
       p_data.loc[(p_data['frame'] >= frame), 'event_id'] = event_id
@@ -339,29 +340,7 @@ def extend_events(p_data, conf):
       if next_event_idx.any():
         stop = np.min(p_data.loc[next_event_idx, 'frame'])
 
-      # Look backward
-      begin = np.min(p_data.loc[(p_data['event_id'] == event_id), 'frame'])
-      start_idx = (
-        (p_data['frame'] < begin) &
-        (p_data['stationary_median'] > baseline_median*conf['baseline_median_scale_factor'])
-      )
-
-      if not start_idx.any():
-        # There are no frames before begin that reach baseline
-        start = np.min(p_data['frame'])
-      else:
-        # Get the first frame that satisfies the above conditions
-        start = np.max(p_data.loc[start_idx, 'frame'])
-
-      # We don't want to run over any other events that have already been seeded
-      prev_event_idx = (
-        (p_data['frame'] >= start) &
-        (p_data['event_id'] != -1) &
-        (p_data['event_id'] == (event_id-1))
-      )
-      if prev_event_idx.any():
-        start = np.max(p_data.loc[prev_event_idx, 'frame'])
-
+      start = np.min(p_data.loc[(p_data['event_id'] == event_id), 'frame'])
       idx = (
         (p_data['frame'] >= start) &
         (p_data['frame'] < stop)
@@ -393,7 +372,8 @@ def find_event_recoveries(p_data, conf):
 
   # Get a smoothed median intensity
   frame_rate = p_data['frame_rate'].unique()[0]
-  p_data.loc[:, 'smoothed'] = sliding_average(p_data['stationary_median'], conf['sliding_window_width'], conf['sliding_window_step'], frame_rate)
+  tmp = p_data.copy()
+  tmp.loc[:, 'smoothed'] = sliding_average(p_data['stationary_median'], conf['sliding_window_width'], conf['sliding_window_step'], frame_rate)
 
   event_ids = p_data.loc[(p_data['event_id'] != -1), 'event_id'].unique()
 
@@ -401,7 +381,7 @@ def find_event_recoveries(p_data, conf):
     # Find where we start returning to baseline, preferentially using the
     # smoothed value, but the normalized value if we have to
 
-    event = p_data.loc[(p_data['event_id'] == event_id),:]
+    event = tmp.loc[(tmp['event_id'] == event_id),:]
     event_type = event['event'].iloc[0]
     recovery_label = conf['recoveries'][event_type] if event_type in conf['recoveries'] else event_type
 
@@ -419,8 +399,6 @@ def find_event_recoveries(p_data, conf):
       event_start = np.min(event.loc[:,'time'])
       p_data.loc[((p_data['time'] >= recovery_start) & (p_data['time'] != event_start) & (p_data['event_id'] == event_id)), 'event'] = recovery_label
 
-  return p_data.loc[:, col_names]
-
 def fit_re_curves(p_data):
   """
   Find import curves
@@ -436,9 +414,13 @@ def fit_re_curves(p_data):
     pd.DataFrame The modified data frame
   """
   baseline_median = np.mean(p_data.loc[(p_data['event'] == 'N'), 'stationary_median'])
+  event_ids = p_data.loc[(p_data['event_id'] != -1), 'event_id'].unique()
 
-  p_data = p_data.groupby([ 'event_id' ]).apply(fit_re_curve, baseline_median)
-  return p_data
+  p_data['repair_k'] = np.nan
+
+  for event_id in event_ids:
+    pe_data = p_data[(p_data['event_id'] == event_id)]
+    p_data.loc[(p_data['event_id'] == event_id),'repair_k'] = fit_re_curve(pe_data, baseline_median)
 
 def fit_re_curve(pe_data, baseline_median):
   """
@@ -452,13 +434,13 @@ def fit_re_curve(pe_data, baseline_median):
     baseline_media float The baseline median value for non-events
 
   Returns
-    pd.DataFrame The modified data frame
+    Repair rate constant value
   """
   if pe_data['event'].iloc[0] != 'R' and pe_data['event'].iloc[0] != 'E':
-    return pe_data
+    return np.nan
 
   if pe_data.loc[( pe_data['event'] == 'E' )].shape[0] <= 1:
-    return pe_data
+    return np.nan
 
   pe_data.sort_values(by=['time'])
 
@@ -476,13 +458,11 @@ def fit_re_curve(pe_data, baseline_median):
   try:
     popt, pcov = optimize.curve_fit(lambda time, k: one_phase(time, x0, y0, top, k), x, y, p0=[ 1E-5 ])
   except optimize.OptimizeWarning:
-    return pe_data
+    return np.nan
   except RuntimeError:
-    return pe_data
+    return np.nan
 
-  pe_data.loc[:, 'repair_k'] = popt[0]
-
-  return pe_data
+  return popt[0]
 
 def one_phase(x, x0, y0, top, k):
   """
@@ -500,18 +480,49 @@ def one_phase(x, x0, y0, top, k):
   """
   return y0+(top-y0)*(1-np.exp(-k*(x-x0)))
 
-def find_event_durations(pe_data):
+def fit_re_curves(p_data):
+  """
+  Find import curves
+
+  Attempts to fit a one-phase association 
+  curve to every repair event, and find 
+  the k parameter.
+
+  Arguments:
+    p_data pd.DataFrame The particle data
+
+  Returns
+    pd.DataFrame The modified data frame
+  """
+  baseline_median = np.mean(p_data.loc[(p_data['event'] == 'N'), 'stationary_median'])
+  event_ids = p_data.loc[(p_data['event_id'] != -1), 'event_id'].unique()
+
+  p_data['repair_k'] = np.nan
+
+  for event_id in event_ids:
+    pe_data = p_data[(p_data['event_id'] == event_id)]
+    p_data.loc[(p_data['event_id'] == event_id),'repair_k'] = fit_re_curve(pe_data, baseline_median)
+
+def find_event_durations(p_data):
   """
   Find event durations
 
   Arguments:
-    pe_data pd.DataFrame The particle data
+    p_data pd.DataFrame The particle data
 
   Returns
-    pe_data pd.DataFrame The modified data frame
+    p_data pd.DataFrame The modified data frame
   """
-  pe_data.loc[:, 'event_duration'] = np.max(pe_data['time']) - np.min(pe_data['time'])
-  return pe_data
+  frame_rate = p_data['frame_rate'].iloc[0]
+  event_ids = p_data.loc[(p_data['event_id'] != -1), 'event_id'].unique()
+
+  p_data['event_duration'] = 0
+  
+  for event_id in event_ids:
+    event_types = p_data.loc[(p_data['event_id'] == event_id), 'event'].unique()
+    for event_type in event_types:
+      pe_data = p_data[((p_data['event_id'] == event_id) & (p_data['event'] == event_type))]
+      p_data.loc[((p_data['event_id'] == event_id) & (p_data['event'] == event_type)),'event_duration'] = (np.max(pe_data['frame'])-np.min(pe_data['frame'])+1)*frame_rate
 
 def sliding_average(data, window, step, frame_rate):
   """
@@ -584,7 +595,7 @@ def run(data, tiff_path, conf=False, fast=False):
   if not fast and done:
     try:
       tqdm.pandas(desc="Processing classified events")
-      data = data.groupby([ 'data_set', 'particle_id' ]).progress_apply(process_event_seeds, conf=conf)
+      data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).progress_apply(process_event_seeds, conf=conf)
     except Exception as e:
       print(e)
       return ( False, data )
@@ -606,7 +617,7 @@ def get_event_summary(data, conf=False):
   cp = data.copy()
 
   # Calculate and store baseline median / particle
-  cp = cp.groupby([ 'data_set', 'particle_id' ]).apply(get_baseline_median)
+  cp = cp.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(get_baseline_median)
 
   # Filter out non-events
   cp = cp.loc[( cp['event'] != 'N' ), :]
@@ -687,6 +698,7 @@ def get_event_info(e_data):
     'data_set': data_sets,
     'particle_id': particle_ids,
     'event': event_types,
+    'event_id': [e_data['event_id'].iloc[0]] * len(event_types),
     'duration': durations,
     'normalized_duration': normalized_durations,
     'fraction_fp_lost': fractions_fp_lost,

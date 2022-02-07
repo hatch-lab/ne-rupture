@@ -107,7 +107,7 @@ schema.update(processor_schema)
 try:
   arguments = Schema(schema).validate(arguments)
 except SchemaError as error:
-  print(colorize("red", error))
+  print(colorize("red", str(error)))
   exit(1)
 
 ### Arguments and inputs
