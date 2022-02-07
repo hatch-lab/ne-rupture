@@ -113,7 +113,7 @@ for(i in 1:nrow(pred_groups)) {
   if(!(pred_groups$event[[i]] %in% c("R", "E"))) {
     next
   }
-  color <- "#ffffff"
+  color <- pred_groups$color[[i]]
   start <- pred_groups$frame_start[[i]]
   end <- pred_groups$frame_end[[i]]+1
   
