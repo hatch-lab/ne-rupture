@@ -85,6 +85,7 @@ Options can also be combined. The default assumes a 3 min pass time, but if you 
 - `--features-pipeline` The CellProfiler pipeline to use for extracting features (defaults to ./preprocessors/cellprofiler/extract.cppipe)
 - `--min-track-length`  Any tracks with fewer than these frames will be filtered out; the minimum track length must always be at least 4, in order to generate derivatives (defaults to 5)
 - `--edge-filter`  Filters cells that are near the edge of the frame, in pixels (defaults to 50)
+- `--accept-tracks`  Whether to just accept the tracks; skip generating a preview (defaults to False)
 
 ### `annotate`
 
@@ -246,6 +247,7 @@ Options:
   --roi-size=<float>  [default: 2.0] Given a segment at time t, at time t+1, will search an area that is the median shape size*roi_size
   --min-track-length=<int>  [default: 5] Tracks less than this number of frames will be excluded. The minimum track length must be >= 4, so that derivatives can be calculated.
   --edge-filter=<int>  [default: 50] Filters cells out that are within this many pixels of the edge.
+  --accept-tracks  [default: False] Whether to just accept the tracks; skip asking to check
 ```
 
 #### Segmenter requirements
