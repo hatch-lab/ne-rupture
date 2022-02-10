@@ -25,6 +25,7 @@ Options:
   --min-track-length=<int>  [default: 5] Any tracks with fewer than these frames will be filtered out. The minimum track length must always be at least 4, in order to generate derivatives. Set to 0 to skip any track filtering.
   --edge-filter=<int>  [default: 50] Filters cells that are near the edge of the frame, in pixels.
   --accept-tracks  [default: False] Whether to just accept the tracks; skip asking to check
+  --skip-tracks  [default: False] Treat each frame as a separate position; don’t draw tracks or calculate some derived features, which would require a timeline
 
 Output:
   A CSV file with processed data
@@ -101,6 +102,7 @@ schema = {
   Optional('<args>'): lambda n: True,
   Optional('--'): lambda n: True,
   Optional('--accept-tracks'): bool,
+  Optional('--skip-tracks'): bool,
 }
 schema.update(processor_schema)
 
@@ -197,11 +199,11 @@ with yaspin(text="Extracting individual TIFFs") as spinner:
   spinner.write("Found " + str(frame_i-1) + " images")
   spinner.ok("✅")
 
-if frame_i-1 <= arguments['--gap-size']:
+if frame_i-1 <= arguments['--gap-size'] and arguments['--skip-tracks'] is False:
   print(colorize("red", "--gap-size must be less than the total number of frames"))
   exit(1)
 
-if frame_i-1 <= arguments['--min-track-length']:
+if frame_i-1 <= arguments['--min-track-length'] and arguments['--skip-tracks'] is False:
   print(colorize("yellow", "--min-track-length is longer than the number of frames. No track filtering will be performed."))
   arguments['--min-track-length'] = 0
   sleep(3)
@@ -211,7 +213,7 @@ tiff_path.mkdir(exist_ok=True, mode=0o755)
 processor.segment(data_path, tiff_path, extracted_path, masks_path, pixel_size=arguments['--pixel-size'], channel=arguments['--channel'], params=arguments)
 
 ### Assign particles to tracks
-build_tracks = True
+build_tracks = (arguments['--skip-tracks'] is False)
 tracks_path = tiff_path / "tracks"
 tracks_path.mkdir(exist_ok=True, mode=0o755)
 gap_size = arguments['--gap-size']
@@ -264,6 +266,15 @@ if preview_video_path.exists():
   preview_video_path.unlink()
 
 ### Extract features
+if arguments['--skip-tracks']:
+  # Move masks to tracks
+  mask_files = masks_path.glob("*.tif")
+  for mask_file in mask_files:
+    if (tracks_path / mask_file.name).exists():
+      (tracks_path / mask_file.name).unlink()
+      
+    mask_file.rename((tracks_path / mask_file.name))
+    
 cyto_tracks_path = tiff_path / "cyto-tracks"
 cyto_tracks_path.mkdir(exist_ok=True, mode=0o755)
 data = processor.extract_features(tiff_path, tracks_path, cyto_tracks_path, pixel_size=arguments['--pixel-size'], params=arguments)
@@ -271,7 +282,10 @@ data = processor.extract_features(tiff_path, tracks_path, cyto_tracks_path, pixe
 arguments['frame_width'] = frame_shape[1]
 arguments['frame_height'] = frame_shape[0]
 
-data = base_transform(data, arguments)
+if arguments['--skip-tracks']:
+  data['particle_id'] = data['frame'].astype(str) + data['particle_id']
+else:
+  data = base_transform(data, arguments)
 
 output_file_path = (output_path / (arguments['--output-name'])).resolve()
 data.to_csv(str(output_file_path), header=True, encoding='utf-8', index=None)

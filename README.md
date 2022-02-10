@@ -86,6 +86,7 @@ Options can also be combined. The default assumes a 3 min pass time, but if you 
 - `--min-track-length`  Any tracks with fewer than these frames will be filtered out; the minimum track length must always be at least 4, in order to generate derivatives (defaults to 5)
 - `--edge-filter`  Filters cells that are near the edge of the frame, in pixels (defaults to 50)
 - `--accept-tracks`  Whether to just accept the tracks; skip generating a preview (defaults to False)
+- `--skip-tracks`  Whether to treat each frame as an independent position; won't calculate many derived features that require a timeline (defaults to False)
 
 ### `annotate`
 
@@ -248,6 +249,7 @@ Options:
   --min-track-length=<int>  [default: 5] Tracks less than this number of frames will be excluded. The minimum track length must be >= 4, so that derivatives can be calculated.
   --edge-filter=<int>  [default: 50] Filters cells out that are within this many pixels of the edge.
   --accept-tracks  [default: False] Whether to just accept the tracks; skip asking to check
+  --skip-tracks  [default: False] Treat each frame as a separate position; don’t draw tracks or calculate some derived features, which would require a timeline
 ```
 
 #### Segmenter requirements
