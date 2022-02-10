@@ -274,7 +274,7 @@ if arguments['--skip-tracks']:
       (tracks_path / mask_file.name).unlink()
       
     mask_file.rename((tracks_path / mask_file.name))
-    
+
 cyto_tracks_path = tiff_path / "cyto-tracks"
 cyto_tracks_path.mkdir(exist_ok=True, mode=0o755)
 data = processor.extract_features(tiff_path, tracks_path, cyto_tracks_path, pixel_size=arguments['--pixel-size'], params=arguments)
@@ -283,7 +283,7 @@ arguments['frame_width'] = frame_shape[1]
 arguments['frame_height'] = frame_shape[0]
 
 if arguments['--skip-tracks']:
-  data['particle_id'] = data['frame'].astype(str) + data['particle_id']
+  data['particle_id'] = data['frame'].astype(str) + '.' + data['particle_id']
 else:
   data = base_transform(data, arguments)
 
