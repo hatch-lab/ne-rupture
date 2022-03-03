@@ -125,8 +125,6 @@ intermediate_path = tmp_path / arguments['--input-name']
 if classifier.SAVES_INTERMEDIATES and not start_over:
   data_file_path = intermediate_path if intermediate_path.exists() else data_file_path
 
-data = pd.read_csv(str(output_file_path), header=0, dtype={ 'particle_id': str })
-
 ### Read our data
 data = pd.read_csv(str(data_file_path), header=0, dtype={ 'particle_id': str })
 if classifier.SAVES_INTERMEDIATES and 'current_idx' not in data.columns:
