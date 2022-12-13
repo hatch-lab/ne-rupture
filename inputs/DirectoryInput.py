@@ -1,3 +1,4 @@
+from errors import NoImagesFound
 import defusedxml.ElementTree as ET
 import tifffile
 
@@ -10,7 +11,7 @@ class DirectoryInput:
     files = list(filter(lambda x: x.name[:2] != "._", files))
 
     if len(files) <= 0:
-      raise NoImagesFound()
+      raise NoImagesFound
 
     files.sort(key=lambda x: str(len(str(x))) + str(x).lower())
     files = sorted(set(files), key=lambda x: str(len(str(x))) + str(x).lower())

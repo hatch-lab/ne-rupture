@@ -70,6 +70,7 @@ import re
 from schema import Schema, And, Or, Use, SchemaError, Optional, Regex
 
 from inputs.DirectoryInput import DirectoryInput
+from inputs.NDInput import NDInput
 
 arguments = docopt(__doc__, version=get_version(), options_first=True)
 
@@ -122,13 +123,16 @@ except SchemaError as error:
 ### Arguments and inputs
 input_path = (ROOT_PATH / (arguments['INPUT'])).resolve()
 output_path = (input_path / (arguments['--output-dir']))
-output_path.mkdir(exist_ok=True, mode=0o755)
-data_path = (ROOT_PATH / (arguments['--data-dir'])).resolve() if arguments['--data-dir'] else processor.get_default_data_path(input_path)
+# output_path.mkdir(exist_ok=True, mode=0o755)
+data_path = (input_path / (arguments['--data-dir'])).resolve() if arguments['--data-dir'] else processor.get_default_data_path(input_path)
 arguments['input_path'] = input_path
 arguments['output_path'] = output_path
 
 # Get TIFF stacks
-input_gen = DirectoryInput(input_path, data_path, arguments['--channel'])
+if data_path.suffix == ".nd":
+  input_gen = NDInput(input_path, data_path, arguments['--channel'])
+else:
+  input_gen = DirectoryInput(input_path, data_path, arguments['--channel'])
 arguments['--data-set'] = [ arguments['--data-set'] ] if arguments['--data-set'] else input_gen.get_data_sets()
 
 datas = []
