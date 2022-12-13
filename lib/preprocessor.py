@@ -12,6 +12,7 @@ import pandas as pd
 from scipy import interpolate
 from scipy import spatial
 import tifffile
+from skimage import restoration
 
 sys.path.append(str(ROOT_PATH / ("external/tracking/")))
 from tracker.extract_data import get_img_files, get_indices_pandas
@@ -181,11 +182,12 @@ def make_stationary(group, col, new_col):
   Returns:
     Modified Pandas DataFrame
   """
-  # group = group.sort_values(by=["time"])
+  group = group.sort_values(by=["time"])
   frame_rate = group['frame_rate'].iloc[0]
   smoothed_mean = sliding_average(group[col], 3600, 1800, frame_rate)
   group[new_col] = group[col] - smoothed_mean
-  # group.loc[(group[new_col] == group[col]), new_col] = np.nan
+  group.loc[(group[new_col] == group[col]), new_col] = np.nan
+  # group[new_col] = restoration.rolling_ball(group[col], radius=30)
 
   # Move mean value to 0
   group[new_col] = group[new_col] - np.mean(group[new_col])

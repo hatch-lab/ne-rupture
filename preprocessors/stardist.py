@@ -4,7 +4,7 @@
 Gets data into a format readable by classifiers
 
 Usage:
-  preprocess.py aics [options] [--] INPUT
+  preprocess.py stardist [options] [--] INPUT
 
 Arguments:
   INPUT Path to the directory containing the raw data
@@ -12,15 +12,22 @@ Arguments:
 Options:
   -h, --help
   -v, --version
-  --filter-window=<int>  [default: 8] The window size used for the median pass filter, in px
-  --gamma=<float>  [default: 0.50] The gamma correction to use
-  --rolling-ball-size=<int>  [default: 100] The rolling ball diameter to use for rolling ball subtraction, in um
+  --skip-normalization  [default: False]
+  --percentile-low=<float>  [default: 1.0]
+  --percentile-high=<float>  [default: 99.0]
+  --probability-threshold=<float>  [default: 0.1]
+  --overlap-threshold=<float>  [default: 0.4]
+  --boundary-exclusion=<float>  [default: 2]
 """
 
 import sys
 import os
 from pathlib import Path
 import shutil
+import numpy as np
+import pandas as pd
+from skimage.color import label2rgb
+from skimage import measure, morphology, exposure, filters
 
 ROOT_PATH = Path(__file__ + "/../..").resolve()
 
@@ -28,36 +35,25 @@ sys.path.append(str(ROOT_PATH))
 sys.path.append(str(ROOT_PATH / "preprocessors"))
 
 from docopt import docopt
-import lib.video as hatchvid
-
-import numpy as np
-import pandas as pd
-import cv2
-
-import tifffile
-from skimage.color import label2rgb
-from skimage import measure, exposure, morphology, segmentation, transform
-from scipy import ndimage as ndi
-
 from tqdm import tqdm
-
-from external.aicspkg.aicssegmentation.core.pre_processing_utils import intensity_normalization
-from external.aicspkg.aicssegmentation.core.pre_processing_utils import image_smoothing_gaussian_3d
-from external.aicspkg.aicssegmentation.core.MO_threshold import MO
-from external.aicspkg.aicssegmentation.core.seg_dot import dot_2d_slice_by_slice_wrapper
-
 from schema import Schema, And, Or, Use, SchemaError, Optional, Regex
+import tifffile
+from tqdm import tqdm
+import cv2
+from stardist.models import StarDist2D
+from csbdeep.utils import normalize
 
-NAME      = "aics"
-
+NAME      = "stardist"
 
 def get_schema():
   return {
-    'aics': lambda x: True,
-    Optional('--mip-dir'): And(str, len),
-    '--filter-window': And(Use(int), lambda n: n > 0, error='--filter-window must be > 0'),
-    '--gamma': And(Use(float), lambda n: n > 0, error='--gamma must be > 0'),
-    '--rolling-ball-size': And(Use(int), lambda n: n > 0)
+    'stardist': lambda x: True,
+    '--skip-normalization': Use(bool),
+    '--percentile-low': And(Use(float), lambda n: n >= 0.0 and n <= 100.0, error='--percentile-low must be between 0 and 100'),
+    '--percentile-high': And(Use(float), lambda n: n >= 0.0 and n <= 100.0, error='--percentile-high must be between 0 and 100'),
+    '--probability-threshold': And(Use(float), lambda n: n >= 0.0 and n <= 1.0, error='--probability-threshold must be between 0 and 1'),
+    '--overlap-threshold': And(Use(float), lambda n: n >= 0.0 and n <= 1.0, error='--overlap-threshold must be between 0 and 1'),
+    '--boundary-exclusion': And(Use(int), lambda n: n > 0, error='--boundary-exlusion must be > 0')
   }
 
 def get_default_data_path(input_path):
@@ -88,79 +84,31 @@ def segment(data_path, tiff_path, extracted_path, masks_path, pixel_size=None, c
   Return:
     Information about the images
   """
-
   raw_files = extracted_path.glob("*.tif")
   raw_files = list(filter(lambda x: x.name[:2] != "._", raw_files))
   raw_files = [ str(x) for x in raw_files ]
   raw_files.sort(key=lambda x: str(len(x)) + x)
 
-  frame_i = 1
+  model = StarDist2D.from_pretrained('2D_versatile_fluo')
 
+  frame_i = 1
   for file_path in tqdm(raw_files, desc="Segmenting images", unit="frames"):
     with tifffile.TiffFile(str(file_path)) as tif:
-      img = tif.pages[0].asarray()
+      image = tif.pages[0].asarray() if params['--skip-normalization'] else normalize(tif.pages[0].asarray(), pmin=params['--percentile-low'], pmax=params['--percentile-high'])
+      labels, details = model.predict_instances(
+        image, 
+        prob_thresh=params['--probability-threshold'],
+        nms_thresh=params['--overlap-threshold']
+      )
 
-      # Pre-processing
-      sys.stdout = open(os.devnull, 'w') # Suppress print
-      i_norm = intensity_normalization(img, [ 10.0, 5.0 ])
-      i_smooth = image_smoothing_gaussian_3d(i_norm, sigma=1)
-      sys.stdout = sys.__stdout__
-
-      # Expand image to 3D
-      i_smooth = np.repeat(i_smooth[np.newaxis, :, :], 3, axis=0)
-
-      # Masked object thresholding
-      pre_seg_1, mo_mask = MO(i_smooth, 'ave', 100, extra_criteria=True, return_object=True)
-
-      # S2 filter for detecting extra spots
-      extra_spots = dot_2d_slice_by_slice_wrapper(i_smooth, [[ 2, 0.025 ]])
-      pre_seg_2 = np.logical_or(pre_seg_1, extra_spots)
-
-      # S2 filter for detecting dark spots
-      dark_spots = dot_2d_slice_by_slice_wrapper(1-i_smooth, [[ 2, 0.025], [1, 0.025]])
-      pre_seg_2[dark_spots > 0] = 0
-
-      # Size filtering
-      seg = morphology.remove_small_objects(pre_seg_2>0, min_size=400, connectivity=1)
-
-      # Return to 2D
-      seg = seg[1, :, :]
-      i_smooth = i_smooth[1,:,:]
-      i_norm_8bit = exposure.rescale_intensity(i_norm, out_range=( 0, 255 )).astype(np.uint8)
-      i_smooth_8bit = exposure.rescale_intensity(i_smooth, out_range=( 0, 255 )).astype(np.uint8)
-
-      # Label regions
-      masks = measure.label(seg)
-      # Read props
-      props = measure.regionprops(masks, intensity_image=i_norm_8bit)
-
-      # Perform a flood fill on all segments
-      st_dev = np.std(i_smooth_8bit)
-      for region in props:
-        centroid = np.round(region.centroid).astype(np.uint32)
-        new_mask = segmentation.flood(i_smooth_8bit, ( centroid[0], centroid[1] ), tolerance=st_dev/2)
-        new_mask = ndi.morphology.binary_fill_holes(new_mask)
-        new_mask = morphology.binary_closing(new_mask,footprint=morphology.disk(4))
-        
-        # Sanity check the size of our flood
-        new_mask = measure.label(new_mask)
-        new_props = measure.regionprops(new_mask, intensity_image=i_norm_8bit)
-        if len(new_props) <= 0:
-          continue
-        new_region = new_props[0]
-        max_flood_size = (pixel_size**2)*10000 if pixel_size is not None else 10000
-        region_size = new_region.area*(pixel_size**2) if pixel_size is not None else new_region.area
-        if region_size > max_flood_size:
-          # If our flood is bigger than a 10000 um^2
-          continue
-
-        # Update masks
-        masks[( (new_mask == 1) | (masks == region.label) )] = region.label
+      props = pd.DataFrame(measure.regionprops_table(labels, properties=('label', 'area')))
+      remove = np.unique(props['label'].loc[(props['area'] <= 300)])
+      labels[(np.isin(labels, remove))] = 0
 
       # Write out masks, images
       file_name = str(frame_i).zfill(4) + ".tif"
-      tifffile.TiffWriter(str(tiff_path / file_name)).save(i_smooth_8bit, resolution=(pixel_size, pixel_size, None))
-      tifffile.TiffWriter(str(masks_path / file_name)).save(masks, resolution=(pixel_size, pixel_size, None))
+      tifffile.TiffWriter(str(tiff_path / file_name)).save(exposure.rescale_intensity(image, out_range=(0,255)).astype(np.uint8), resolution=(pixel_size, pixel_size, None))
+      tifffile.TiffWriter(str(masks_path / file_name)).save(labels, resolution=(pixel_size, pixel_size, None))
       frame_i += 1
 
 def extract_features(tiff_path, tracks_path, cyto_tracks_path, pixel_size=1.0, params={}):
@@ -209,7 +157,8 @@ def extract_features(tiff_path, tracks_path, cyto_tracks_path, pixel_size=1.0, p
 
   for track_path in tqdm(track_masks):
     tracks = cv2.imread(str(track_path), cv2.IMREAD_ANYDEPTH)
-    image = cv2.imread(str(tiff_path / track_path.name), cv2.IMREAD_GRAYSCALE)
+    image = cv2.imread(str(tiff_path / ("corrected/" + track_path.name)), cv2.IMREAD_GRAYSCALE)
+    print(track_path)
 
     frame_i = int(track_path.name.replace(".tif", ""))
 
@@ -225,7 +174,7 @@ def extract_features(tiff_path, tracks_path, cyto_tracks_path, pixel_size=1.0, p
       region_mask = morphology.binary_dilation(region_mask, morphology.disk(3)).astype(np.uint8)
       cyto_mask = region_mask.copy()
       cyto_mask = morphology.binary_dilation(cyto_mask, morphology.disk(5)).astype(np.uint8)
-      cyto_mask[region_mask == 1] = 0
+      cyto_mask[tracks != 0] = 0
 
       cyto_tracks[(cyto_mask == 1)] = region.label
 
@@ -239,11 +188,11 @@ def extract_features(tiff_path, tracks_path, cyto_tracks_path, pixel_size=1.0, p
       data['y_px'].append(int(region.centroid[0]))
 
       data['area'].append(region.area)
-      data['mean'].append(region.mean_intensity)
+      data['mean'].append(region.intensity_mean)
       data['median'].append(np.median(image[(tracks == region.label)]))
-      data['min'].append(region.min_intensity)
-      data['max'].append(region.max_intensity)
-      data['sum'].append(region.area*region.mean_intensity)
+      data['min'].append(region.intensity_min)
+      data['max'].append(region.intensity_max)
+      data['sum'].append(region.area*region.intensity_mean)
 
       masked_region = np.ma.masked_array(image, mask=np.invert(cyto_mask.astype(bool)))
 
@@ -280,3 +229,5 @@ def extract_features(tiff_path, tracks_path, cyto_tracks_path, pixel_size=1.0, p
   data['y_conversion'] = pixel_size
 
   return data
+
+

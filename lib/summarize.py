@@ -36,8 +36,16 @@ def get_cell_stats(p_data, skip_filtered=False):
     result['pred' + event] = True if event in p_data['event'].unique() else False
     if 'true_event' not in p_data.columns:
       result['true' + event] = np.nan
+      result['iou' + event] = np.nan
     else:
       result['true' + event] = True if event in p_data['true_event'].unique() else False
+      union = np.sum((p_data['event'] == event) | (p_data['true_event'] == event))
+      intersection = np.sum((p_data['event'] == event) & (p_data['true_event'] == event))
+
+      if union == 0:
+        result['iou' + event] = 0
+      else:
+        result['iou' + event] = intersection/union
 
     if 'cell_event' in p_data.columns:
       result['pred' + event] = True if event in p_data['cell_event'].unique() else False
@@ -69,6 +77,7 @@ def get_summary_table(results, data_set):
   nums_corr_negative = []
   nums_pred_negative = []
   nums_true_negative = []
+  miou = []
   
   for event,name in STATS_EVENT_MAP.items():
     names.append(name)
@@ -78,6 +87,7 @@ def get_summary_table(results, data_set):
     nums_corr_negative.append(results[((results['pred' + event] == False) & (results['true' + event] == False))].shape[0])
     nums_pred_negative.append(results[((results['pred' + event] == False))].shape[0])
     nums_true_negative.append(results[((results['true' + event] == False))].shape[0])
+    miou.append(np.mean(results['iou' + event]))
   
   summary = pd.DataFrame({
     'data_set': [data_set] * len(names),
@@ -87,7 +97,8 @@ def get_summary_table(results, data_set):
     'num_true_positive': nums_true_positive,
     'num_corr_negative': nums_corr_negative,
     'num_pred_negative': nums_pred_negative,
-    'num_true_negative': nums_true_negative
+    'num_true_negative': nums_true_negative,
+    'miou': miou
   })
 
   return summary

@@ -271,7 +271,8 @@ def seed_events(data, tiff_path, tmp_csv_path, conf, idx=0):
     elif c in [ 'r', 'm', 'x', 'n' ]:
       data.at[idx, 'event'] = c.upper()
 
-    elif c == 'q' or cv2.getWindowProperty('Cell', cv2.WND_PROP_VISIBLE) < 1:
+    # elif c == 'q' or cv2.getWindowProperty('Cell', cv2.WND_PROP_VISIBLE) < 1:
+    elif c == 'q':
       cv2.destroyAllWindows()
       return (False, data)
 

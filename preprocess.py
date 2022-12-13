@@ -26,6 +26,7 @@ Options:
   --edge-filter=<int>  [default: 50] Filters cells that are near the edge of the frame, in pixels.
   --accept-tracks  [default: False] Whether to just accept the tracks; skip asking to check
   --skip-tracks  [default: False] Treat each frame as a separate position; don’t draw tracks or calculate some derived features, which would require a timeline
+  --skip-flat-field-correction  [default: False] Don't perform psuedo-flat field correction
 
 Output:
   A CSV file with processed data
@@ -37,6 +38,7 @@ import shutil
 from pathlib import Path, PurePath
 from importlib import import_module
 import builtins
+import cv2
 
 ROOT_PATH = Path(__file__ + "/..").resolve()
 builtins.ROOT_PATH = ROOT_PATH
@@ -48,6 +50,8 @@ from lib.version import get_version
 from lib.output import colorize
 from lib.preprocessor import base_transform, make_tracks, open_file
 import lib.video as hatchvid
+
+from skimage import measure, morphology, exposure, filters, restoration, registration, color
 
 import defusedxml.ElementTree as ET
 import math
@@ -64,6 +68,8 @@ from yaspin.spinners import Spinners
 import re
 
 from schema import Schema, And, Or, Use, SchemaError, Optional, Regex
+
+from inputs.DirectoryInput import DirectoryInput
 
 arguments = docopt(__doc__, version=get_version(), options_first=True)
 
@@ -99,6 +105,7 @@ schema = {
   '--roi-size': And(Use(float), lambda n: n >= 1, error='--roi-size must be >= 1.0'),
   '--min-track-length': And(Use(int), lambda n: n >= 4, error='--min-track-length must be >= 4 frames'),
   '--edge-filter': And(Use(int), lambda n: n >= 0, error='--edge-filter must be >= 0 px'),
+  Optional('--skip-flat-field-correction'): bool,
   Optional('<args>'): lambda n: True,
   Optional('--'): lambda n: True,
   Optional('--accept-tracks'): bool,
@@ -117,168 +124,191 @@ input_path = (ROOT_PATH / (arguments['INPUT'])).resolve()
 output_path = (input_path / (arguments['--output-dir']))
 output_path.mkdir(exist_ok=True, mode=0o755)
 data_path = (ROOT_PATH / (arguments['--data-dir'])).resolve() if arguments['--data-dir'] else processor.get_default_data_path(input_path)
-
-arguments['--data-set'] = arguments['--data-set'] if arguments['--data-set'] else (input_path).name
-
-tiff_path = (input_path / (arguments['--img-dir'])).resolve() if arguments['--img-dir'] else (input_path / ("images/" + arguments['--data-set']))
-
 arguments['input_path'] = input_path
 arguments['output_path'] = output_path
-arguments['data_path'] = data_path
-arguments['tiff_path'] = tiff_path
-
-arguments['--pixel-size'] = arguments['--pixel-size'] if arguments['--pixel-size'] > 0 else None
-
-### Extract TIFFs to make single channel, single frame TIFFs
-tiff_path.mkdir(mode=0o755, parents=True, exist_ok=True)
-  
-extracted_path = tiff_path / "extracted"
-extracted_path.mkdir(mode=0o755, parents=True, exist_ok=True)
-
-masks_path = tiff_path / "masks"
-masks_path.mkdir(mode=0o755, parents=True, exist_ok=True)
 
 # Get TIFF stacks
-files = list(data_path.glob("*.tif")) + list(data_path.glob("*.TIF")) + list(data_path.glob("*.tiff")) + list(data_path.glob("*.TIFF"))
-files = list(filter(lambda x: x.name[:2] != "._", files))
+input_gen = DirectoryInput(input_path, data_path, arguments['--channel'])
+arguments['--data-set'] = [ arguments['--data-set'] ] if arguments['--data-set'] else input_gen.get_data_sets()
 
-if len(files) <= 0:
-  raise  NoImagesFound()
+datas = []
+for data_set in arguments['--data-set']:
+  print("Processing {}".format(data_set))
 
-files.sort(key=lambda x: str(len(str(x))) + str(x).lower())
-files = sorted(set(files), key=lambda x: str(len(str(x))) + str(x).lower())
+  tiff_path = (input_path / (arguments['--img-dir'])).resolve() if arguments['--img-dir'] else (input_path / ("images/" + data_set))
 
-# Frame data to store
-frame_shape = None
-frame_i = 1
+  arguments['data_path'] = data_path
+  arguments['tiff_path'] = tiff_path
+  arguments['pixel_size'] = arguments['--pixel-size'] if arguments['--pixel-size'] > 0 else None
 
-if arguments['--pixel-size'] is None:
-  with tifffile.TiffFile(files[0]) as tif:
-    if 'spatial-calibration-x' in tif.pages[0].description:
-      # Try from the description
-
-      metadata = ET.fromstring(tif.pages[0].description)
-      plane_data = metadata.find("PlaneInfo")
-
-      for prop in plane_data.findall("prop"):
-        if prop.get("id") == "spatial-calibration-x":
-          arguments['--pixel-size'] = float(prop.get("value"))
-          break
+  ### Extract TIFFs to make single channel, single frame TIFFs
+  tiff_path.mkdir(mode=0o755, parents=True, exist_ok=True)
     
-    elif 'XResolution' in tif.pages[0].tags:
-      # Try from the XResolution tag
-      arguments['--pixel-size'] = tif.pages[0].tags['XResolution'].value
+  extracted_path = tiff_path / "corrected"
+  extracted_path.mkdir(mode=0o755, parents=True, exist_ok=True)
 
-      if len(arguments['--pixel-size']) == 2:
-        arguments['--pixel-size'] = arguments['--pixel-size'][0]/arguments['--pixel-size'][1]
+  optical_flow_path = tiff_path / "optical-flow"
+  optical_flow_path.mkdir(mode=0o755, parents=True, exist_ok=True)
 
-      arguments['--pixel-size'] = 1/arguments['--pixel-size']
+  masks_path = tiff_path / "masks"
+  masks_path.mkdir(mode=0o755, parents=True, exist_ok=True)
 
-if arguments['--pixel-size'] is None:
-  # We need pixel size specified
-  arguments['--pixel-size'] = float(input("Microns/pixel could not be determined from the TIFFs.\nCommon values are:\nLeica SD 40x: " + str(0.2538) + "\nLeica SD 20x: " + str(0.5089) + "\nPlease enter a spatial calibration value (um/pixel):"))
+  # Frame data to store
+  frame_shape = None
+  if arguments['pixel_size'] is None:
+    arguments['pixel_size'] = input_gen.get_spatial_calibration()
 
-with yaspin(text="Extracting individual TIFFs") as spinner:
-  spinner.spinner = Spinners.dots8
-  for file in files:
-    with tifffile.TiffFile(file) as tif:
-      for i in range(len(tif.pages)):
-        img = tif.pages[i].asarray()
+  if arguments['pixel_size'] is None:
+    # We need pixel size specified
+    arguments['pixel_size'] = float(input("Microns/pixel could not be determined from the TIFFs.\nCommon values are:\nLeica SD 40x: " + str(0.2538) + "\nLeica SD 20x: " + str(0.5089) + "\nPlease enter a spatial calibration value (um/pixel):"))
 
-        # Get the signal channel
-        if len(img.shape) == 3:
-          # channel is 1-indexed, python is 0-indexed
-          img = img[:,:, (channel-1)]
+  stack = []
+  with yaspin(text="Extracting individual TIFFs") as spinner:
+    spinner.spinner = Spinners.dots8
+    for file in input_gen.get_files(data_set):
+      with tifffile.TiffFile(file) as tif:
+        for i in range(len(tif.pages)):
+          file_name = str(len(stack)+1).zfill(4) + ".tif"
+          spinner.text = "Extracting {name}...".format(name=file_name)
+          img = tif.pages[i].asarray()
+          if frame_shape is None:
+            frame_shape = img.shape
 
-        if frame_shape is None:
-          frame_shape = img.shape
+          if not arguments['--skip-flat-field-correction']:
+            img = exposure.rescale_intensity(img, out_range=(0, 1)).astype(np.float64)
 
-        file_name = str(frame_i).zfill(4) + ".tif"
-        tifffile.TiffWriter(str(extracted_path / file_name)).save(img, resolution=(1/arguments['--pixel-size'], 1/arguments['--pixel-size'], None))
-        frame_i += 1
-  spinner.write("Found " + str(frame_i-1) + " images")
-  spinner.ok("✅")
+            # Generate pseudo-flat field correction 
+            pseudo_flat_image = filters.gaussian(img, sigma=300, preserve_range=False)
+            # tifffile.TiffWriter(str(extracted_path / ("pseudo" + str(len(stack)) + ".tif"))).write(pseudo_flat_image, resolution=(1/arguments['--pixel-size'], 1/arguments['--pixel-size'], None))
+            img /= pseudo_flat_image * np.mean(pseudo_flat_image)
+            img = exposure.rescale_intensity(img, out_range=(0,255))
+            img[img > 255] = 255
 
-if frame_i-1 <= arguments['--gap-size'] and arguments['--skip-tracks'] is False:
-  print(colorize("red", "--gap-size must be less than the total number of frames"))
-  exit(1)
+            # img -= restoration.rolling_ball(img, radius=100)
+          else:
+            img = exposure.rescale_intensity(img, out_range=(0,255))
+          
+          img = img.astype(np.uint8)
+          stack.append(img)
 
-if frame_i-1 <= arguments['--min-track-length'] and arguments['--skip-tracks'] is False:
-  print(colorize("yellow", "--min-track-length is longer than the number of frames. No track filtering will be performed."))
-  arguments['--min-track-length'] = 0
-  sleep(3)
+    spinner.text = "Performing rolling ball background subtraction..."
+    bg = restoration.rolling_ball(stack, kernel=restoration.ellipsoid_kernel((2, 100, 100), 100))
+    stack = np.stack(stack, axis=0)
+    stack -= bg
 
-### Segment our data
-tiff_path.mkdir(exist_ok=True, mode=0o755)
-processor.segment(data_path, tiff_path, extracted_path, masks_path, pixel_size=arguments['--pixel-size'], channel=arguments['--channel'], params=arguments)
+    spinner.text = "Calculating optical flow..."
+    previous_img = None
+    flows = []
+    for idx,img in enumerate(stack):
+      file_name = str((idx+1)).zfill(4) + ".tif"
+      tifffile.TiffWriter(str(extracted_path / file_name)).write(img, resolution=(1/arguments['--pixel-size'], 1/arguments['--pixel-size'], None))
+      if previous_img is not None:
+        flow = cv2.calcOpticalFlowFarneback(previous_img, img, None, 0.5, 3, 15, 3, 5, 1.2, 0)
+        mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])
+        hsv = np.zeros(( ang.shape[0], ang.shape[1], 3))
+        hsv[..., 1] = 255
+        hsv[..., 0] = ang*180/np.pi/2
+        hsv[..., 2] = mag #cv2.normalize(mag, None, 0, 255, cv.NORM_MINMAX)
+        flows.append(hsv)
+      previous_img = img.copy()
 
-### Assign particles to tracks
-build_tracks = (arguments['--skip-tracks'] is False)
-tracks_path = tiff_path / "tracks"
-tracks_path.mkdir(exist_ok=True, mode=0o755)
-gap_size = arguments['--gap-size']
-roi_size = arguments['--roi-size']
+    flows = np.array(flows)
+    flows = exposure.rescale_intensity(flows, out_range=np.uint32)
+    for idx,img in enumerate(flows):
+      file_name = str((idx+2)).zfill(4) + ".tif"
+      rgb = color.hsv2rgb(img)
+      tifffile.TiffWriter(str(optical_flow_path / file_name)).write(rgb, resolution=(1/arguments['--pixel-size'], 1/arguments['--pixel-size'], None))
 
-(ROOT_PATH / 'tmp').mkdir(exist_ok=True, mode=0o755)
-preview_video_path = ROOT_PATH / 'tmp/current_tracks.mp4'
+    spinner.write("Found " + str(len(stack)) + " images")
+    spinner.ok("✅")
 
-while build_tracks:
-  print("Building tracks with gap size {:d} and roi size {:f}...".format(gap_size, roi_size))
-  make_tracks(tiff_path, tracks_path, delta_t=arguments['--gap-size'], default_roi_size=arguments['--roi-size'])
+  if len(stack) <= arguments['--gap-size'] and arguments['--skip-tracks'] is False:
+    print(colorize("red", "--gap-size must be less than the total number of frames"))
+    exit(1)
 
-  ### Display tracks
-  show_gui = (arguments['--accept-tracks'] is False)
+  if len(stack) <= arguments['--min-track-length'] and arguments['--skip-tracks'] is False:
+    print(colorize("yellow", "--min-track-length is longer than the number of frames. No track filtering will be performed."))
+    arguments['--min-track-length'] = 0
+    sleep(3)
 
-  if show_gui:
-    hatchvid.make_video(tiff_path, tracks_path, preview_video_path)
-    
-    print('Opening a preview of the tracks. Indicate if you like them or want to change the parameters.')
-    sleep(2)
+  ### Segment our data
+  processor.segment(data_path, tiff_path, extracted_path, masks_path, pixel_size=arguments['pixel_size'], channel=arguments['--channel'], params=arguments)
 
-    open_file(str(preview_video_path))
+  ### Assign particles to tracks
+  build_tracks = (arguments['--skip-tracks'] is False)
+  tracks_path = tiff_path / "tracks"
+  tracks_path.mkdir(exist_ok=True, mode=0o755)
+  gap_size = arguments['--gap-size']
+  roi_size = arguments['--roi-size']
 
-    change = input('Do you like the tracks? [Y/n]')
+  (ROOT_PATH / 'tmp').mkdir(exist_ok=True, mode=0o755)
+  preview_video_path = ROOT_PATH / 'tmp/current_tracks.mp4'
 
-    if change.upper() != 'Y':
-      new_gap_size = int(input("Enter a new gap size ({:d}): ".format(gap_size)))
-      new_roi_size = float(input("Enter a new ROI size ({:f}): ".format(roi_size)))
+  while build_tracks:
+    print("Building tracks with gap size {:d} and roi size {:f}...".format(gap_size, roi_size))
+    make_tracks(tiff_path, tracks_path, delta_t=arguments['--gap-size'], default_roi_size=arguments['--roi-size'])
 
-      if new_gap_size == '':
-        new_gap_size = gap_size
+    ### Display tracks
+    show_gui = (arguments['--accept-tracks'] is False)
 
-      if new_roi_size == '':
-        new_roi_size = roi_size
+    if show_gui:
+      hatchvid.make_video(tiff_path, tracks_path, preview_video_path)
+      
+      print('Opening a preview of the tracks. Indicate if you like them or want to change the parameters.')
+      sleep(2)
 
-      if new_gap_size == gap_size and new_roi_size == roi_size:
-        build_tracks = False
+      open_file(str(preview_video_path))
+
+      change = input('Do you like the tracks? [Y/n]')
+
+      if change.upper() != 'Y':
+        new_gap_size = int(input("Enter a new gap size ({:d}): ".format(gap_size)))
+        new_roi_size = float(input("Enter a new ROI size ({:f}): ".format(roi_size)))
+
+        if new_gap_size == '':
+          new_gap_size = gap_size
+
+        if new_roi_size == '':
+          new_roi_size = roi_size
+
+        if new_gap_size == gap_size and new_roi_size == roi_size:
+          build_tracks = False
+        else:
+          if new_gap_size > 0:
+            gap_size = new_gap_size
+          if new_roi_size >= 1:
+            roi_size = new_roi_size
       else:
-        if new_gap_size > 0:
-          gap_size = new_gap_size
-        if new_roi_size >= 1:
-          roi_size = new_roi_size
+        build_tracks = False
     else:
       build_tracks = False
-  else:
-    build_tracks = False
 
-# Clean up
-if preview_video_path.exists():
-  preview_video_path.unlink()
+  # Clean up
+  if preview_video_path.exists():
+    preview_video_path.unlink()
 
-### Extract features
-if arguments['--skip-tracks']:
-  # Move masks to tracks
-  mask_files = masks_path.glob("*.tif")
-  for mask_file in mask_files:
-    if (tracks_path / mask_file.name).exists():
-      (tracks_path / mask_file.name).unlink()
-      
-    mask_file.rename((tracks_path / mask_file.name))
+  ### Extract features
+  if arguments['--skip-tracks']:
+    # Move masks to tracks
+    mask_files = masks_path.glob("*.tif")
+    for mask_file in mask_files:
+      if (tracks_path / mask_file.name).exists():
+        (tracks_path / mask_file.name).unlink()
+        
+      mask_file.rename((tracks_path / mask_file.name))
 
-cyto_tracks_path = tiff_path / "cyto-tracks"
-cyto_tracks_path.mkdir(exist_ok=True, mode=0o755)
-data = processor.extract_features(tiff_path, tracks_path, cyto_tracks_path, pixel_size=arguments['--pixel-size'], params=arguments)
+  cyto_tracks_path = tiff_path / "cyto-tracks"
+  cyto_tracks_path.mkdir(exist_ok=True, mode=0o755)
+  datas.append(processor.extract_features(tiff_path, tracks_path, cyto_tracks_path, pixel_size=arguments['--pixel-size'], params=arguments))
 
+  print("Removing temporary files...")
+  try:
+    # shutil.rmtree(str(extracted_path))
+    shutil.rmtree(str(masks_path))
+  except:
+    print(colorize("yellow"), "Unable to remove temporary files in:\n" + str(extracted_path) + "\n" + str(masks_path))
+
+data = pd.concat(datas)
 arguments['frame_width'] = frame_shape[1]
 arguments['frame_height'] = frame_shape[0]
 
@@ -289,13 +319,6 @@ else:
 
 output_file_path = (output_path / (arguments['--output-name'])).resolve()
 data.to_csv(str(output_file_path), header=True, encoding='utf-8', index=None)
-
-print("Removing temporary files...")
-try:
-  shutil.rmtree(str(extracted_path))
-  shutil.rmtree(str(masks_path))
-except:
-  print(colorize("yellow"), "Unable to remove temporary files in:\n" + str(extracted_path) + "\n" + str(masks_path))
 
 json_path = output_path / "preprocess.conf.json"
 print("Saving configration options to " + str(json_path))

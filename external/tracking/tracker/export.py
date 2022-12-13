@@ -3,7 +3,7 @@ import os
 
 import numpy as np
 import pandas as pd
-from tifffile import imsave
+from tifffile import imwrite
 
 from tracker.postprocessing import add_dummy_masks, untangle_tracks
 from tracker.postprocessing import no_fn_correction, no_untangling
@@ -133,7 +133,7 @@ class ExportResults:
 
             file_name = self.img_file_name + str(time).zfill(z_fill) + self.img_file_ending
             tracking_mask = np.array(np.squeeze(tracking_mask), dtype=np.uint16).reshape(img_shape)
-            imsave(os.path.join(export_dir, file_name), tracking_mask, compress=1)
+            imwrite(os.path.join(export_dir, file_name), tracking_mask, compression=1)
 
 
 def create_tracking_mask_image(all_tracks, time, track_ids, img_shape):
