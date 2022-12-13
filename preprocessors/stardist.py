@@ -35,7 +35,6 @@ sys.path.append(str(ROOT_PATH))
 sys.path.append(str(ROOT_PATH / "preprocessors"))
 
 from docopt import docopt
-from tqdm import tqdm
 from schema import Schema, And, Or, Use, SchemaError, Optional, Regex
 import tifffile
 from tqdm import tqdm
