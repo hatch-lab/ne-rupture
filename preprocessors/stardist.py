@@ -67,7 +67,7 @@ def get_default_data_path(input_path):
   """
   return input_path / "images/raw"
 
-def segment(data_path, tiff_path, extracted_path, masks_path, pixel_size=None, channel=1, params={}):
+def segment(stack, normalized_path, masks_path, pixel_size=None, channel=1, params={}):
   """
   Given a set of images, segment them and save the masks and processed images
 
@@ -83,34 +83,28 @@ def segment(data_path, tiff_path, extracted_path, masks_path, pixel_size=None, c
   Return:
     Information about the images
   """
-  raw_files = extracted_path.glob("*.tif")
-  raw_files = list(filter(lambda x: x.name[:2] != "._", raw_files))
-  raw_files = [ str(x) for x in raw_files ]
-  raw_files.sort(key=lambda x: str(len(x)) + x)
-
   model = StarDist2D.from_pretrained('2D_versatile_fluo')
 
   frame_i = 1
-  for file_path in tqdm(raw_files, desc="Segmenting images", unit="frames"):
-    with tifffile.TiffFile(str(file_path)) as tif:
-      image = tif.pages[0].asarray() if params['--skip-normalization'] else normalize(tif.pages[0].asarray(), pmin=params['--percentile-low'], pmax=params['--percentile-high'])
-      labels, details = model.predict_instances(
-        image, 
-        prob_thresh=params['--probability-threshold'],
-        nms_thresh=params['--overlap-threshold']
-      )
+  for corrected_image in tqdm(stack, desc="Segmenting images", unit="frames"):
+    image = corrected_image if params['--skip-normalization'] else normalize(corrected_image, pmin=params['--percentile-low'], pmax=params['--percentile-high'])
+    labels, details = model.predict_instances(
+      image, 
+      prob_thresh=params['--probability-threshold'],
+      nms_thresh=params['--overlap-threshold']
+    )
 
-      props = pd.DataFrame(measure.regionprops_table(labels, properties=('label', 'area')))
-      remove = np.unique(props['label'].loc[(props['area'] <= 300)])
-      labels[(np.isin(labels, remove))] = 0
+    props = pd.DataFrame(measure.regionprops_table(labels, properties=('label', 'area')))
+    remove = np.unique(props['label'].loc[(props['area'] <= 300)])
+    labels[(np.isin(labels, remove))] = 0
 
-      # Write out masks, images
-      file_name = str(frame_i).zfill(4) + ".tif"
-      tifffile.TiffWriter(str(tiff_path / file_name)).save(exposure.rescale_intensity(image, out_range=(0,255)).astype(np.uint8), resolution=(pixel_size, pixel_size, None))
-      tifffile.TiffWriter(str(masks_path / file_name)).save(labels, resolution=(pixel_size, pixel_size, None))
-      frame_i += 1
+    # Write out masks, images
+    file_name = str(frame_i).zfill(4) + ".tif"
+    tifffile.TiffWriter(str(normalized_path / file_name)).save(exposure.rescale_intensity(image, out_range=(0,255)).astype(np.uint8), resolution=(pixel_size, pixel_size, None))
+    tifffile.TiffWriter(str(masks_path / file_name)).save(labels, resolution=(pixel_size, pixel_size, None))
+    frame_i += 1
 
-def extract_features(tiff_path, tracks_path, cyto_tracks_path, pixel_size=1.0, params={}):
+def extract_features(stack, tracks_path, cyto_tracks_path, channels, pixel_size=1.0, params={}):
   """
   Extract features from segmented masks that have already been assigned to tracks
 
@@ -118,13 +112,13 @@ def extract_features(tiff_path, tracks_path, cyto_tracks_path, pixel_size=1.0, p
     tiff_path Path The path to the folder that holds processed images
     tracks_path Path The subdir in tiff_path that holds track masks
     cyto_tracks_path Path The subdir in tiff_path that holds cyto masks
+    channels list The channels
     pixel_size float The size of pixels
     params dict A dictionary of parameters
 
   Return:
     pandas.DataFrame The extracted features for each cell
   """
-  cyto_tracks_path.mkdir(exist_ok=True, mode=0o755)
 
   track_masks = tracks_path.glob("*.tif")
   track_masks = list(filter(lambda x: x.name[:2] != "._", track_masks))
@@ -140,43 +134,33 @@ def extract_features(tiff_path, tracks_path, cyto_tracks_path, pixel_size=1.0, p
     'y_px': [],
 
     'area': [],
-    'mean': [],
-    'median': [],
-    'min': [],
-    'max': [],
-    'sum': [],
-
-    'cyto_area': [],
-    'cyto_mean': [],
-    'cyto_median': [],
-    'cyto_min': [],
-    'cyto_max': [],
-    'cyto_sum': []
+    'cyto_area': []
   }
 
-  for track_path in tqdm(track_masks):
-    tracks = cv2.imread(str(track_path), cv2.IMREAD_ANYDEPTH)
-    image = cv2.imread(str(tiff_path / ("corrected/" + track_path.name)), cv2.IMREAD_GRAYSCALE)
-    print(track_path)
+  for channel in channels:
+    data['channel_' + str(channel) + '_mean'] = []
+    data['channel_' + str(channel) + '_median'] = []
+    data['channel_' + str(channel) + '_min'] = []
+    data['channel_' + str(channel) + '_max'] = []
+    data['channel_' + str(channel) + '_sum'] = []
 
+    data['channel_' + str(channel) + '_cyto_mean'] = []
+    data['channel_' + str(channel) + '_cyto_median'] = []
+    data['channel_' + str(channel) + '_cyto_min'] = []
+    data['channel_' + str(channel) + '_cyto_max'] = []
+    data['channel_' + str(channel) + '_cyto_sum'] = []
+
+  for track_path in tqdm(track_masks):
+    tracks = cv2.imread(str(track_path), cv2.IMREAD_UNCHANGED)
+    cyto_tracks = cv2.imread(str(cyto_tracks_path / track_path.name), cv2.IMREAD_UNCHANGED)
+    
     frame_i = int(track_path.name.replace(".tif", ""))
 
     # Read props
-    props = measure.regionprops(tracks, intensity_image=image)
-    cyto_tracks = np.zeros_like(tracks)
+    props = measure.regionprops(tracks)
 
     for region in props:
       # Generate cytoplasmic masks
-      region_mask = tracks.copy()
-      region_mask[(region_mask != region.label)] = 0
-      region_mask[(region_mask != 0)] = 1
-      region_mask = morphology.binary_dilation(region_mask, morphology.disk(3)).astype(np.uint8)
-      cyto_mask = region_mask.copy()
-      cyto_mask = morphology.binary_dilation(cyto_mask, morphology.disk(5)).astype(np.uint8)
-      cyto_mask[tracks != 0] = 0
-
-      cyto_tracks[(cyto_mask == 1)] = region.label
-
       data['particle_id'].append(str(region.label))
       data['mask_id'].append(str(region.label))
       data['frame'].append(frame_i)
@@ -187,22 +171,19 @@ def extract_features(tiff_path, tracks_path, cyto_tracks_path, pixel_size=1.0, p
       data['y_px'].append(int(region.centroid[0]))
 
       data['area'].append(region.area)
-      data['mean'].append(region.intensity_mean)
-      data['median'].append(np.median(image[(tracks == region.label)]))
-      data['min'].append(region.intensity_min)
-      data['max'].append(region.intensity_max)
-      data['sum'].append(region.area*region.intensity_mean)
+      data['cyto_area'].append(np.sum((cyto_tracks == region.label)))
+      for channel in channels:
+        data['channel_' + str(channel) + '_mean'].append(np.mean(stack[...,(channel-1)][(tracks == region.label)]))
+        data['channel_' + str(channel) + '_median'].append(np.median(stack[...,(channel-1)][(tracks == region.label)]))
+        data['channel_' + str(channel) + '_min'].append(np.min(stack[...,(channel-1)][(tracks == region.label)]))
+        data['channel_' + str(channel) + '_max'].append(np.max(stack[...,(channel-1)][(tracks == region.label)]))
+        data['channel_' + str(channel) + '_sum'].append(np.sum(stack[...,(channel-1)][(tracks == region.label)]))
 
-      masked_region = np.ma.masked_array(image, mask=np.invert(cyto_mask.astype(bool)))
-
-      data['cyto_area'].append(np.sum(cyto_mask))
-      data['cyto_mean'].append(np.ma.mean(masked_region))
-      data['cyto_median'].append(np.ma.median(masked_region))
-      data['cyto_min'].append(np.ma.min(masked_region))
-      data['cyto_max'].append(np.ma.max(masked_region))
-      data['cyto_sum'].append(np.ma.sum(masked_region))
-
-    tifffile.TiffWriter(str(cyto_tracks_path / track_path.name)).save(cyto_tracks, resolution=(pixel_size, pixel_size, None))
+        data['channel_' + str(channel) + '_cyto_mean'].append(np.mean(stack[...,(channel-1)][(cyto_tracks == region.label)]))
+        data['channel_' + str(channel) + '_cyto_median'].append(np.median(stack[...,(channel-1)][(cyto_tracks == region.label)]))
+        data['channel_' + str(channel) + '_cyto_min'].append(np.min(stack[...,(channel-1)][(cyto_tracks == region.label)]))
+        data['channel_' + str(channel) + '_cyto_max'].append(np.max(stack[...,(channel-1)][(cyto_tracks == region.label)]))
+        data['channel_' + str(channel) + '_cyto_sum'].append(np.sum(stack[...,(channel-1)][(cyto_tracks == region.label)]))
 
   data = pd.DataFrame(data)
   data = data.astype({

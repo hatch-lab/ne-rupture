@@ -182,7 +182,7 @@ def make_videos(tiff_path, data_file_path, output_path, annotate=True, draw_trac
       if graph_path.exists():
         graph_path.unlink()
 
-def make_video(tiff_path, mask_path, output_file_path, graph_path=None, frame_rate=180, draw_tracks=True, data=None, annotate=True, crop=False, scale=1.0, movie_name=None, codec='mp4v', lut='glasbey', show_pbar=True):
+def make_video(stack, masks_path, output_file_path, graph_path=None, frame_rate=180, draw_tracks=True, data=None, annotate=True, crop=False, scale=1.0, movie_name=None, codec='mp4v', lut='glasbey', show_pbar=True):
   lut = pd.read_csv(str(ROOT_PATH / ("lib/luts/" + lut + ".lut")), dtype={'red': int, 'green': int, 'blue': int})
   lut = lut[['red', 'green', 'blue']].copy()
   lut.reset_index()
@@ -190,11 +190,6 @@ def make_video(tiff_path, mask_path, output_file_path, graph_path=None, frame_ra
   lut['red_float'] = lut['red']/255
   lut['green_float'] = lut['green']/255
   lut['blue_float'] = lut['blue']/255
-
-  image_files = list(tiff_path.glob("*.tif"))
-  image_files.sort(key=lambda x: str(len(str(x))) + str(x))
-  if len(image_files) < 1:
-    raise NoImagesFound('No images found in ' + str(tiff_path))
 
   description = 'Building movie'
   if movie_name is not None:
@@ -209,97 +204,95 @@ def make_video(tiff_path, mask_path, output_file_path, graph_path=None, frame_ra
   writer = None
 
   if show_pbar:
-    pbar = tqdm(image_files, desc=description)
+    pbar = tqdm(enumerate(stack), desc=description, total=stack.shape[0])
   else:
-    pbar = image_files
+    pbar = enumerate(stack)
 
-  
   if data is not None:
     max_frame = np.max(data['frame'])
     min_frame = np.min(data['frame'])
   else:
-    max_frame = len(image_files)
+    max_frame = stack.shape[0]
     min_frame = 1
 
-  for image_file in pbar:
-    with Image.open(str(image_file)) as image:
-      tracks_file = mask_path / image_file.name
-      if not tracks_file.exists():
-        raise ValueError("No mask matches " + str(image_file.name) + " in " + str(mask_path))
-      mask = Image.open(str(tracks_file))
+  for num,image in pbar:
+    frame_idx = int(num+1)
+    mask_name = (str(frame_idx).zfill(4) + ".tif")
+    mask_file = masks_path / mask_name
+    if not mask_file.exists():
+      raise ValueError("No mask matches " + str(mask_name) + " in " + str(masks_path))
+    mask = Image.open(str(mask_file))
 
-      frame_idx = int(image_file.stem)
+    # Skip if not in data
+    if data is not None and frame_idx not in data['frame'].unique():
+      continue
 
-      # Skip if not in data
-      if data is not None and frame_idx not in data['frame'].unique():
-        continue
+    # Assign colors to each label
+    props = pd.DataFrame(regionprops_table(np.asarray(mask), properties=('label', 'centroid')))
+    props.rename(columns={ 'centroid-0': 'y', 'centroid-1': 'x' }, inplace=True)
+    if np.max(props['label']) > lut.shape[0]:
+      new_luts = lut.sample(np.max(props['label'])-lut.shape[0], replace=True)
+      lut = pd.concat([lut, new_luts], ignore_index=True)
+    props = props.merge(lut, left_on='label', right_index=True)
 
-      # Assign colors to each label
-      props = pd.DataFrame(regionprops_table(np.asarray(mask), properties=('label', 'centroid')))
-      props.rename(columns={ 'centroid-0': 'y', 'centroid-1': 'x' }, inplace=True)
-      if np.max(props['label']) > lut.shape[0]:
-        new_luts = lut.sample(np.max(props['label'])-lut.shape[0], replace=True, ignore_index=True)
-        lut = pd.concat([lut, new_luts], ignore_index=True)
-      props = props.merge(lut, left_on='label', right_index=True)
+    # Add mask overlay
+    r = props['red_float'].tolist()
+    g = props['green_float'].tolist()
+    b = props['blue_float'].tolist()
+    colors = list(zip(r, g, b))
 
-      # Add mask overlay
-      r = props['red_float'].tolist()
-      g = props['green_float'].tolist()
-      b = props['blue_float'].tolist()
-      colors = list(zip(r, g, b))
+    if annotate:
+      np_image = label2rgb(np.asarray(mask), image=np.asarray(image), colors=colors, alpha=0.4)
+      image = Image.fromarray((np_image*255).astype(np.uint8))
 
-      if annotate:
-        np_image = label2rgb(np.asarray(mask), image=np.asarray(image), colors=colors, alpha=0.4)
-        image = Image.fromarray((np_image*255).astype(np.uint8))
+    # Annotate the frame if needed
+    if annotate and data is not None:
+      image = _annotate_image(image, data.loc[(data['frame'] == frame_idx)])
 
-      # Annotate the frame if needed
-      if annotate and data is not None:
-        image = _annotate_image(image, data.loc[(data['frame'] == frame_idx)])
+    # Build tracks if necessary
+    if draw_tracks:
+      if coords is None:
+        coords = props.copy()
+        coords['frame'] = frame_idx
+      else:
+        new_coords = props.copy()
+        new_coords['frame'] = frame_idx
+        new_coords = new_coords[[ 'label', 'x', 'y', 'red', 'green', 'blue', 'frame' ]]
+        coords = coords[[ 'label', 'x', 'y', 'red', 'green', 'blue', 'frame' ]]
 
-      # Build tracks if necessary
-      if draw_tracks:
-        if coords is None:
-          coords = props.copy()
-          coords['frame'] = frame_idx
-        else:
-          new_coords = props.copy()
-          new_coords['frame'] = frame_idx
-          new_coords = new_coords[[ 'label', 'x', 'y', 'red', 'green', 'blue', 'frame' ]]
-          coords = coords[[ 'label', 'x', 'y', 'red', 'green', 'blue', 'frame' ]]
+        coords = pd.concat([ coords, new_coords ])
+        coords = coords.loc[(coords['frame'] > frame_idx-15)]
+        coords.sort_values(['label', 'frame'], inplace=True, ascending=False, ignore_index=True)
+        alphas = pd.DataFrame({ 
+          'frame': list(range(frame_idx-14, frame_idx+1)),
+          'alpha': [
+            0,
+            26,
+            51,
+            77,
+            102,
+            128,
+            153,
+            179,
+            204,
+            230,
+            255,
+            255,
+            255,
+            255,
+            255
+          ] 
+        })
+        coords = coords.merge(alphas, on='frame', how='left')
 
-          coords = pd.concat([ coords, new_coords ])
-          coords = coords.loc[(coords['frame'] > frame_idx-15)]
-          coords.sort_values(['label', 'frame'], inplace=True, ascending=False, ignore_index=True)
-          alphas = pd.DataFrame({ 
-            'frame': list(range(frame_idx-14, frame_idx+1)),
-            'alpha': [
-              0,
-              26,
-              51,
-              77,
-              102,
-              128,
-              153,
-              179,
-              204,
-              230,
-              255,
-              255,
-              255,
-              255,
-              255
-            ] 
-          })
-          coords = coords.merge(alphas, on='frame', how='left')
+        track_draw = ImageDraw.Draw(image, 'RGBA')
 
-          track_draw = ImageDraw.Draw(image, 'RGBA')
-
-          for row in coords.itertuples():
-            old_coords = coords.loc[((coords['frame'] == (row.frame-1)) & (coords['label'] == row.label))]
-            if not old_coords.empty:
-              old_x = old_coords['x'].iloc[0]
-              old_y = old_coords['y'].iloc[0]
-              track_draw.line([ old_x, old_y, row.x, row.y ], fill=(row.red, row.green, row.blue, row.alpha), width=2)
+        for row in coords.itertuples():
+          old_coords = coords.loc[((coords['frame'] == (row.frame-1)) & (coords['label'] == row.label))]
+          if not old_coords.empty:
+            old_x = old_coords['x'].iloc[0]
+            old_y = old_coords['y'].iloc[0]
+            track_draw.line([ old_x, old_y, row.x, row.y ], fill=(row.red, row.green, row.blue, row.alpha), width=2)
 
       # Crop the frame if need be
       if crop is not False and data is not None:

@@ -12,7 +12,10 @@ import pandas as pd
 from scipy import interpolate
 from scipy import spatial
 import tifffile
-from skimage import restoration
+from skimage import restoration, morphology
+
+import cv2
+from tqdm import tqdm
 
 sys.path.append(str(ROOT_PATH / ("external/tracking/")))
 from tracker.extract_data import get_img_files, get_indices_pandas
@@ -27,7 +30,7 @@ def open_file(filename):
     opener = "open" if sys.platform == "darwin" else "xdg-open"
     subprocess.call([opener, filename])
 
-def base_transform(data, params):
+def base_transform(num_channels, data, params):
   """
   Generate information we always want
 
@@ -46,14 +49,12 @@ def base_transform(data, params):
   Return:
     pandas.DataFrame The modified data frame
   """
-  data_set = params['--data-set']
   frame_rate = params['--frame-rate']
   frame_width = params['frame_width']
   frame_height = params['frame_height']
 
   data['frame_rate'] = frame_rate
   data['time'] = data['frame']*frame_rate
-  data['data_set'] = data_set
 
   # Filter short tracks
   if params['--min-track-length'] > 0:
@@ -71,15 +72,34 @@ def base_transform(data, params):
   data = data.sort_values(by=[ 'data_set', 'particle_id', 'time' ], ignore_index=True)
 
   # Normalize median intensity by average particle intensity/frame
-  data = data.groupby([ 'frame' ], as_index=False).apply(normalize_intensity, 'median', 'median', 'normalized_median')
-  data = data.groupby([ 'frame' ], as_index=False).apply(normalize_intensity, 'median', 'mean', 'normalized_mean')
-  data = data.groupby([ 'frame' ], as_index=False).apply(normalize_intensity, 'median', 'sum', 'normalized_sum')
-  data = data.groupby([ 'frame' ], as_index=False).apply(normalize_intensity, 'median', 'cyto_mean', 'normalized_cyto_mean')
+  for channel_idx in range(num_channels):
+    channel = channel_idx+1
+    data = data.groupby([ 'frame' ], as_index=False).apply(normalize_intensity, 'channel_' + str(channel) + '_median', 'channel_' + str(channel) + '_median', 'channel_' + str(channel) + '_normalized_median')
+    data = data.groupby([ 'frame' ], as_index=False).apply(normalize_intensity, 'channel_' + str(channel) + '_median', 'channel_' + str(channel) + '_mean', 'channel_' + str(channel) + '_normalized_mean')
+    data = data.groupby([ 'frame' ], as_index=False).apply(normalize_intensity, 'channel_' + str(channel) + '_median', 'channel_' + str(channel) + '_sum', 'channel_' + str(channel) + '_normalized_sum')
 
-  data = scale(data, 'normalized_median', 'normalized_median')
-  data = scale(data, 'normalized_mean', 'normalized_mean')
-  data = scale(data, 'normalized_sum', 'normalized_sum')
-  data = scale(data, 'normalized_cyto_mean', 'normalized_cyto_mean')
+    data = data.groupby([ 'frame' ], as_index=False).apply(normalize_intensity, 'channel_' + str(channel) + '_cyto_median', 'channel_' + str(channel) + '_cyto_median', 'channel_' + str(channel) + '_normalized_cyto_median')
+    data = data.groupby([ 'frame' ], as_index=False).apply(normalize_intensity, 'channel_' + str(channel) + '_cyto_median', 'channel_' + str(channel) + '_cyto_mean', 'channel_' + str(channel) + '_normalized_cyto_mean')
+    data = data.groupby([ 'frame' ], as_index=False).apply(normalize_intensity, 'channel_' + str(channel) + '_cyto_median', 'channel_' + str(channel) + '_cyto_sum', 'channel_' + str(channel) + '_normalized_cyto_sum')
+
+    data = scale(data, 'channel_' + str(channel) + '_normalized_median', 'channel_' + str(channel) + '_normalized_median')
+    data = scale(data, 'channel_' + str(channel) + '_normalized_mean', 'channel_' + str(channel) + '_normalized_mean')
+    
+    data = scale(data, 'channel_' + str(channel) + '_normalized_cyto_median', 'channel_' + str(channel) + '_normalized_cyto_median')
+    data = scale(data, 'channel_' + str(channel) + '_normalized_cyto_mean', 'channel_' + str(channel) + '_normalized_cyto_mean')
+
+    data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(make_stationary, 'channel_' + str(channel) + '_normalized_median', 'channel_' + str(channel) + '_stationary_median')
+    data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(make_stationary, 'channel_' + str(channel) + '_normalized_mean', 'channel_' + str(channel) + '_stationary_mean')
+    data = data.groupby([ 'data_set', 'particle_id' ]).apply(make_stationary, 'channel_' + str(channel) + '_normalized_sum', 'channel_' + str(channel) + '_stationary_sum')
+    
+    data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(make_stationary, 'channel_' + str(channel) + '_normalized_cyto_median', 'channel_' + str(channel) + '_stationary_cyto_median')
+    data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(make_stationary, 'channel_' + str(channel) + '_normalized_cyto_mean', 'channel_' + str(channel) + '_stationary_cyto_mean')
+
+    data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(fit_spline, 'channel_' + str(channel) + '_stationary_median', 'channel_' + str(channel) + '_median')
+    data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(fit_spline, 'channel_' + str(channel) + '_stationary_mean', 'channel_' + str(channel) + '_mean')
+    data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(fit_spline, 'channel_' + str(channel) + '_stationary_cyto_mean', 'channel_' + str(channel) + '_cyto_mean')
+    data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(fit_spline, 'channel_' + str(channel) + '_stationary_sum', 'channel_' + str(channel) + '_sum')
+
 
   # Scale area of each particle to be between 0 and 1 (relative to itself)
   data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(scale, 'area', 'scaled_area')
@@ -88,18 +108,10 @@ def base_transform(data, params):
   # Make intensity/sum/area stationary
   data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(make_stationary, 'scaled_area', 'stationary_area')
   data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(make_stationary, 'scaled_cyto_area', 'stationary_cyto_area')
-  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(make_stationary, 'normalized_median', 'stationary_median')
-  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(make_stationary, 'normalized_mean', 'stationary_mean')
-  data = data.groupby([ 'data_set', 'particle_id' ]).apply(make_stationary, 'normalized_sum', 'stationary_sum')
-  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(make_stationary, 'normalized_cyto_mean', 'stationary_cyto_mean')
-
+  
   # Interpolate with cubic splines/find derivatives
   data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(fit_spline, 'stationary_area', 'area')
   data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(fit_spline, 'stationary_cyto_area', 'cyto_area')
-  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(fit_spline, 'stationary_median', 'median')
-  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(fit_spline, 'stationary_mean', 'mean')
-  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(fit_spline, 'stationary_cyto_mean', 'cyto_mean')
-  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(fit_spline, 'stationary_sum', 'sum')
   data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(fit_spline, 'x', 'x')
   data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(fit_spline, 'y', 'y')
   data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(find_speed)
@@ -274,9 +286,9 @@ def find_nearest_neighbor_distances(f_data):
 
   return f_data
 
-def make_tracks(tiff_path, output_path, delta_t=3, default_roi_size=2):
+def make_tracks(tiff_path, masks_path, output_path, cyto_output_path, delta_t=3, default_roi_size=2):
   img_files = get_img_files(tiff_path)
-  mask_files = get_img_files(tiff_path / "masks")
+  mask_files = get_img_files(masks_path)
 
   # set roi size
   # assume img shape z,x,y
@@ -319,6 +331,21 @@ def make_tracks(tiff_path, output_path, delta_t=3, default_roi_size=2):
       (output_path / new_name).unlink()
       
     track_file.rename((output_path / new_name))
+
+  track_files = output_path.glob("*.tif")
+  track_files = list(filter(lambda x: x.name[:2] != "._", track_files))
+
+  for track_path in tqdm(track_files):
+    tracks = cv2.imread(str(track_path), cv2.IMREAD_UNCHANGED)
+    frame_i = int(track_path.name.replace(".tif", ""))
+
+    cyto_tracks = morphology.dilation(tracks, morphology.disk(5)).astype(np.uint16)
+    cyto_tracks[tracks != 0] = 0
+
+    tifffile.TiffWriter(str(cyto_output_path / track_path.name)).save(cyto_tracks)
+
+  return tracks
+
 
 def show_tracks(data, tiff_path, delta_t, default_roi_size):
 

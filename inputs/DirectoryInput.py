@@ -14,7 +14,6 @@ class DirectoryInput:
       raise NoImagesFound
 
     files.sort(key=lambda x: str(len(str(x))) + str(x).lower())
-    files = sorted(set(files), key=lambda x: str(len(str(x))) + str(x).lower())
 
     self.files = files
 

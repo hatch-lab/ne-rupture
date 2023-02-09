@@ -2,10 +2,13 @@ from errors import NoImagesFound
 import re
 import numpy as np
 from tqdm import tqdm
+import tifffile
+import defusedxml.ElementTree as ET
+from skimage import exposure
 
 class NDInput:
 
-  def __init__(self, input_path, data_path, channel):
+  def __init__(self, input_path, data_path, segmentation_channel):
     self.input_path = input_path
     self.data_path = data_path
 
@@ -17,6 +20,7 @@ class NDInput:
       'dims': {},
       'data_sets': {},
       'wavelengths': {},
+      'channels': {},
       'wave_in_filename': False,
       'pixel_size': None
     }
@@ -33,7 +37,7 @@ class NDInput:
         if key == '"DoTimelapse"' and value != "TRUE":
           self.meta['dims']['t'] = 1
         elif key == '"NTimePoints"':
-          self.meta['dims']['t'] = int(value)
+          self.meta['dims']['t'] = int(value)+1
 
         if key == '"DoWave"' and value != "TRUE":
           self.meta['dims']['c'] == 1
@@ -52,33 +56,34 @@ class NDInput:
 
         elif re.match(wave_pattern, key):
           wavelength = key.replace('"WaveName', "")
-          wavelength = 'w' + wavelength.replace('"', "")
+          channel = wavelength.replace('"', "")
+          wavelength = 'w' + channel
           self.meta['wavelengths'][wavelength] = value.replace('"', "")
+          self.meta['channels'][int(channel)] = wavelength
 
         elif key == '"WaveInFileName"' and value == "TRUE":
           self.meta['wave_in_filename'] = True
 
-    self.segmentation_channel = 'w' + str(channel)
-    if self.meta['wave_in_filename']:
-      self.segmentation_channel += self.meta['wavelengths'][self.segmentation_channel]
-
+    self.segmentation_channel = 'w' + str(segmentation_channel)
     self.files = {}
     # Collect all the file names for each data set
-    base_name = data_path.name
+    base_name = data_path.stem
     search_dir = data_path.parent
     for key, data_set in tqdm(self.meta['data_sets'].items()):
-      c_first_search_pattern = base_name + "_" + self.segmentation_channel + "_" + key + "*.TIF"
-      s_first_search_pattern = base_name + "_" + key + "_" + self.segmentation_channel + "*.TIF"
-      fs = list(search_dir.glob(c_first_search_pattern)) + list(search_dir.glob(s_first_search_pattern))
-      fs = list(filter(lambda x: x.name[:2] != "._", fs))
-      if self.meta['dims']['t'] > 1:
-        fs.sort(key=lambda x: re.sub(r'^.*_t([0-9]+)\.TIF$', r'\g<1>', x))
-      self.files[data_set] = fs
+      self.files[data_set] = {}
+      for name, wavelength in self.meta['wavelengths'].items():
+        c_first_search_pattern = base_name + "_" + name + wavelength + "_" + key + "_*.TIF"
+        s_first_search_pattern = base_name + "_" + key + "_" + name + wavelength + "_*.TIF"
+        fs = list(search_dir.glob(c_first_search_pattern)) + list(search_dir.glob(s_first_search_pattern))
+        fs = list(filter(lambda x: x.name[:2] != "._", fs))
+        if self.meta['dims']['t'] > 1:
+          fs.sort(key=lambda x: int(re.sub(r'^.*_t([0-9]+)\.TIF$', r'\g<1>', str(x))))
+        self.files[data_set][name] = fs
 
     # Get x,y spatial size/calibration
     pixel_size = None
-    first_key = self.files.keys()[0]
-    with tifffile.TiffFile(self.files[first_key][0]) as tif:
+    first_key = list(self.files.keys())[0]
+    with tifffile.TiffFile(self.files[first_key][self.meta['channels'][1]][0]) as tif:
       img = tif.pages[0].asarray()
       self.meta['dims']['x'] = img.shape[1]
       self.meta['dims']['y'] = img.shape[0]
@@ -104,8 +109,29 @@ class NDInput:
 
     self.meta['pixel_size'] = pixel_size
 
-  def get_files(self, data_set):
-    return self.files[data_set]
+  def get_files(self, data_set, channel=None):
+    if channel is None:
+      channel = self.get_segmentation_channel_idx()+1
+    wavelength = self.meta['channels'][channel]
+    return self.files[data_set][wavelength]
+
+  def get_stack(self, data_set, skip_flat_field=True, skip_rolling_ball=True):
+    stack = []
+    for wavelength in self.meta['channels'].values():
+      channel_stack = np.empty((self.meta['dims']['t'], self.meta['dims']['x'], self.meta['dims']['y']), dtype=np.uint8)
+      for t,file in tqdm(enumerate(self.files[data_set][wavelength]), total=self.meta['dims']['t'], desc=wavelength):
+        img = exposure.rescale_intensity(tifffile.imread(file), out_range=np.uint8)
+        channel_stack[t] = img
+      stack.append(channel_stack)
+
+    return np.stack(stack, axis=-1)
+
+  def get_segmentation_channel_idx(self):
+    wavelength = self.segmentation_channel
+    return list(self.meta['channels'].values()).index(wavelength)
+
+  def get_channels(self):
+    return list(self.meta['channels'].keys())
 
   def get_data_sets(self):
     return self.files.keys()
