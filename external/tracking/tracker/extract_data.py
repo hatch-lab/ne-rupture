@@ -22,7 +22,7 @@ def get_indices_pandas(data, background_id=0):
         flat_data = data[masked_data]  # d: data , mask attribute
         dummy_index = np.where(masked_data.ravel())[0]
         df = pd.DataFrame.from_dict({'mask_id': flat_data, 'flat_index': dummy_index})
-        df = df.groupby('mask_id').apply(lambda x: np.unravel_index(x.flat_index, data.shape))
+        df = df.groupby('mask_id', group_keys=False).apply(lambda x: np.unravel_index(x.flat_index, data.shape))
     else:  # aim for lower memory consumption at cost of speed
         flat_data = data[(data != background_id)]  # d: data , mask attribute
         dummy_index = np.where((data != background_id).ravel())[0]

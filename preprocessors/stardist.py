@@ -86,7 +86,8 @@ def segment(stack, normalized_path, masks_path, pixel_size=None, channel=1, para
   model = StarDist2D.from_pretrained('2D_versatile_fluo')
 
   frame_i = 1
-  for corrected_image in tqdm(stack, desc="Segmenting images", unit="frames"):
+  print("Segmenting images...")
+  for corrected_image in stack:
     image = corrected_image if params['--skip-normalization'] else normalize(corrected_image, pmin=params['--percentile-low'], pmax=params['--percentile-high'])
     labels, details = model.predict_instances(
       image, 
@@ -173,17 +174,34 @@ def extract_features(stack, tracks_path, cyto_tracks_path, channels, pixel_size=
       data['area'].append(region.area)
       data['cyto_area'].append(np.sum((cyto_tracks == region.label)))
       for channel in channels:
-        data['channel_' + str(channel) + '_mean'].append(np.mean(stack[...,(channel-1)][(tracks == region.label)]))
-        data['channel_' + str(channel) + '_median'].append(np.median(stack[...,(channel-1)][(tracks == region.label)]))
-        data['channel_' + str(channel) + '_min'].append(np.min(stack[...,(channel-1)][(tracks == region.label)]))
-        data['channel_' + str(channel) + '_max'].append(np.max(stack[...,(channel-1)][(tracks == region.label)]))
-        data['channel_' + str(channel) + '_sum'].append(np.sum(stack[...,(channel-1)][(tracks == region.label)]))
+        subset = stack[(frame_i-1),:,:,(channel-1)][(tracks == region.label)]
+        cyto_subset = stack[(frame_i-1),:,:,(channel-1)][(cyto_tracks == region.label)]
 
-        data['channel_' + str(channel) + '_cyto_mean'].append(np.mean(stack[...,(channel-1)][(cyto_tracks == region.label)]))
-        data['channel_' + str(channel) + '_cyto_median'].append(np.median(stack[...,(channel-1)][(cyto_tracks == region.label)]))
-        data['channel_' + str(channel) + '_cyto_min'].append(np.min(stack[...,(channel-1)][(cyto_tracks == region.label)]))
-        data['channel_' + str(channel) + '_cyto_max'].append(np.max(stack[...,(channel-1)][(cyto_tracks == region.label)]))
-        data['channel_' + str(channel) + '_cyto_sum'].append(np.sum(stack[...,(channel-1)][(cyto_tracks == region.label)]))
+        if len(subset) <= 0:
+          data['channel_' + str(channel) + '_mean'].append(np.nan)
+          data['channel_' + str(channel) + '_median'].append(np.nan)
+          data['channel_' + str(channel) + '_min'].append(np.nan)
+          data['channel_' + str(channel) + '_max'].append(np.nan)
+          data['channel_' + str(channel) + '_sum'].append(np.nan)
+        else:
+          data['channel_' + str(channel) + '_mean'].append(np.mean(subset))
+          data['channel_' + str(channel) + '_median'].append(np.median(subset))
+          data['channel_' + str(channel) + '_min'].append(np.min(subset))
+          data['channel_' + str(channel) + '_max'].append(np.max(subset))
+          data['channel_' + str(channel) + '_sum'].append(np.sum(subset))
+
+        if len(cyto_subset) <= 0:
+          data['channel_' + str(channel) + '_cyto_mean'].append(np.nan)
+          data['channel_' + str(channel) + '_cyto_median'].append(np.nan)
+          data['channel_' + str(channel) + '_cyto_min'].append(np.nan)
+          data['channel_' + str(channel) + '_cyto_max'].append(np.nan)
+          data['channel_' + str(channel) + '_cyto_sum'].append(np.nan)
+        else:
+          data['channel_' + str(channel) + '_cyto_mean'].append(np.mean(cyto_subset))
+          data['channel_' + str(channel) + '_cyto_median'].append(np.median(cyto_subset))
+          data['channel_' + str(channel) + '_cyto_min'].append(np.min(cyto_subset))
+          data['channel_' + str(channel) + '_cyto_max'].append(np.max(cyto_subset))
+          data['channel_' + str(channel) + '_cyto_sum'].append(np.sum(cyto_subset))
 
   data = pd.DataFrame(data)
   data = data.astype({

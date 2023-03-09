@@ -74,13 +74,13 @@ def base_transform(num_channels, data, params):
   # Normalize median intensity by average particle intensity/frame
   for channel_idx in range(num_channels):
     channel = channel_idx+1
-    data = data.groupby([ 'frame' ], as_index=False).apply(normalize_intensity, 'channel_' + str(channel) + '_median', 'channel_' + str(channel) + '_median', 'channel_' + str(channel) + '_normalized_median')
-    data = data.groupby([ 'frame' ], as_index=False).apply(normalize_intensity, 'channel_' + str(channel) + '_median', 'channel_' + str(channel) + '_mean', 'channel_' + str(channel) + '_normalized_mean')
-    data = data.groupby([ 'frame' ], as_index=False).apply(normalize_intensity, 'channel_' + str(channel) + '_median', 'channel_' + str(channel) + '_sum', 'channel_' + str(channel) + '_normalized_sum')
+    data = data.groupby([ 'frame' ], as_index=False, group_keys=False).apply(normalize_intensity, 'channel_' + str(channel) + '_median', 'channel_' + str(channel) + '_median', 'channel_' + str(channel) + '_normalized_median')
+    data = data.groupby([ 'frame' ], as_index=False, group_keys=False).apply(normalize_intensity, 'channel_' + str(channel) + '_median', 'channel_' + str(channel) + '_mean', 'channel_' + str(channel) + '_normalized_mean')
+    data = data.groupby([ 'frame' ], as_index=False, group_keys=False).apply(normalize_intensity, 'channel_' + str(channel) + '_median', 'channel_' + str(channel) + '_sum', 'channel_' + str(channel) + '_normalized_sum')
 
-    data = data.groupby([ 'frame' ], as_index=False).apply(normalize_intensity, 'channel_' + str(channel) + '_cyto_median', 'channel_' + str(channel) + '_cyto_median', 'channel_' + str(channel) + '_normalized_cyto_median')
-    data = data.groupby([ 'frame' ], as_index=False).apply(normalize_intensity, 'channel_' + str(channel) + '_cyto_median', 'channel_' + str(channel) + '_cyto_mean', 'channel_' + str(channel) + '_normalized_cyto_mean')
-    data = data.groupby([ 'frame' ], as_index=False).apply(normalize_intensity, 'channel_' + str(channel) + '_cyto_median', 'channel_' + str(channel) + '_cyto_sum', 'channel_' + str(channel) + '_normalized_cyto_sum')
+    data = data.groupby([ 'frame' ], as_index=False, group_keys=False).apply(normalize_intensity, 'channel_' + str(channel) + '_cyto_median', 'channel_' + str(channel) + '_cyto_median', 'channel_' + str(channel) + '_normalized_cyto_median')
+    data = data.groupby([ 'frame' ], as_index=False, group_keys=False).apply(normalize_intensity, 'channel_' + str(channel) + '_cyto_median', 'channel_' + str(channel) + '_cyto_mean', 'channel_' + str(channel) + '_normalized_cyto_mean')
+    data = data.groupby([ 'frame' ], as_index=False, group_keys=False).apply(normalize_intensity, 'channel_' + str(channel) + '_cyto_median', 'channel_' + str(channel) + '_cyto_sum', 'channel_' + str(channel) + '_normalized_cyto_sum')
 
     data = scale(data, 'channel_' + str(channel) + '_normalized_median', 'channel_' + str(channel) + '_normalized_median')
     data = scale(data, 'channel_' + str(channel) + '_normalized_mean', 'channel_' + str(channel) + '_normalized_mean')
@@ -88,36 +88,36 @@ def base_transform(num_channels, data, params):
     data = scale(data, 'channel_' + str(channel) + '_normalized_cyto_median', 'channel_' + str(channel) + '_normalized_cyto_median')
     data = scale(data, 'channel_' + str(channel) + '_normalized_cyto_mean', 'channel_' + str(channel) + '_normalized_cyto_mean')
 
-    data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(make_stationary, 'channel_' + str(channel) + '_normalized_median', 'channel_' + str(channel) + '_stationary_median')
-    data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(make_stationary, 'channel_' + str(channel) + '_normalized_mean', 'channel_' + str(channel) + '_stationary_mean')
+    data = data.groupby([ 'data_set', 'particle_id' ], as_index=False, group_keys=False).apply(make_stationary, 'channel_' + str(channel) + '_normalized_median', 'channel_' + str(channel) + '_stationary_median')
+    data = data.groupby([ 'data_set', 'particle_id' ], as_index=False, group_keys=False).apply(make_stationary, 'channel_' + str(channel) + '_normalized_mean', 'channel_' + str(channel) + '_stationary_mean')
     data = data.groupby([ 'data_set', 'particle_id' ]).apply(make_stationary, 'channel_' + str(channel) + '_normalized_sum', 'channel_' + str(channel) + '_stationary_sum')
     
-    data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(make_stationary, 'channel_' + str(channel) + '_normalized_cyto_median', 'channel_' + str(channel) + '_stationary_cyto_median')
-    data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(make_stationary, 'channel_' + str(channel) + '_normalized_cyto_mean', 'channel_' + str(channel) + '_stationary_cyto_mean')
+    data = data.groupby([ 'data_set', 'particle_id' ], as_index=False, group_keys=False).apply(make_stationary, 'channel_' + str(channel) + '_normalized_cyto_median', 'channel_' + str(channel) + '_stationary_cyto_median')
+    data = data.groupby([ 'data_set', 'particle_id' ], as_index=False, group_keys=False).apply(make_stationary, 'channel_' + str(channel) + '_normalized_cyto_mean', 'channel_' + str(channel) + '_stationary_cyto_mean')
 
-    data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(fit_spline, 'channel_' + str(channel) + '_stationary_median', 'channel_' + str(channel) + '_median')
-    data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(fit_spline, 'channel_' + str(channel) + '_stationary_mean', 'channel_' + str(channel) + '_mean')
-    data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(fit_spline, 'channel_' + str(channel) + '_stationary_cyto_mean', 'channel_' + str(channel) + '_cyto_mean')
-    data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(fit_spline, 'channel_' + str(channel) + '_stationary_sum', 'channel_' + str(channel) + '_sum')
+    data = data.groupby([ 'data_set', 'particle_id' ], as_index=False, group_keys=False).apply(fit_spline, 'channel_' + str(channel) + '_stationary_median', 'channel_' + str(channel) + '_median')
+    data = data.groupby([ 'data_set', 'particle_id' ], as_index=False, group_keys=False).apply(fit_spline, 'channel_' + str(channel) + '_stationary_mean', 'channel_' + str(channel) + '_mean')
+    data = data.groupby([ 'data_set', 'particle_id' ], as_index=False, group_keys=False).apply(fit_spline, 'channel_' + str(channel) + '_stationary_cyto_mean', 'channel_' + str(channel) + '_cyto_mean')
+    data = data.groupby([ 'data_set', 'particle_id' ], as_index=False, group_keys=False).apply(fit_spline, 'channel_' + str(channel) + '_stationary_sum', 'channel_' + str(channel) + '_sum')
 
 
   # Scale area of each particle to be between 0 and 1 (relative to itself)
-  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(scale, 'area', 'scaled_area')
-  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(scale, 'cyto_area', 'scaled_cyto_area')
+  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False, group_keys=False).apply(scale, 'area', 'scaled_area')
+  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False, group_keys=False).apply(scale, 'cyto_area', 'scaled_cyto_area')
 
   # Make intensity/sum/area stationary
-  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(make_stationary, 'scaled_area', 'stationary_area')
-  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(make_stationary, 'scaled_cyto_area', 'stationary_cyto_area')
+  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False, group_keys=False).apply(make_stationary, 'scaled_area', 'stationary_area')
+  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False, group_keys=False).apply(make_stationary, 'scaled_cyto_area', 'stationary_cyto_area')
   
   # Interpolate with cubic splines/find derivatives
-  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(fit_spline, 'stationary_area', 'area')
-  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(fit_spline, 'stationary_cyto_area', 'cyto_area')
-  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(fit_spline, 'x', 'x')
-  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(fit_spline, 'y', 'y')
-  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False).apply(find_speed)
+  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False, group_keys=False).apply(fit_spline, 'stationary_area', 'area')
+  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False, group_keys=False).apply(fit_spline, 'stationary_cyto_area', 'cyto_area')
+  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False, group_keys=False).apply(fit_spline, 'x', 'x')
+  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False, group_keys=False).apply(fit_spline, 'y', 'y')
+  data = data.groupby([ 'data_set', 'particle_id' ], as_index=False, group_keys=False).apply(find_speed)
 
   # Find nearest neighbors
-  data = data.groupby([ 'data_set', 'frame' ], as_index=False).apply(find_nearest_neighbor_distances)
+  data = data.groupby([ 'data_set', 'frame' ], as_index=False, group_keys=False).apply(find_nearest_neighbor_distances)
 
   data = data.astype({ 'frame': np.uint64 })
 

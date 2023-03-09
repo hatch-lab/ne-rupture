@@ -123,7 +123,7 @@ except SchemaError as error:
 ### Arguments and inputs
 input_path = (ROOT_PATH / (arguments['INPUT'])).resolve()
 output_path = (input_path / (arguments['--output-dir']))
-# output_path.mkdir(exist_ok=True, mode=0o755)
+output_path.mkdir(exist_ok=True, mode=0o755)
 data_path = (input_path / (arguments['--data-dir'])).resolve() if arguments['--data-dir'] else processor.get_default_data_path(input_path)
 arguments['input_path'] = input_path
 arguments['output_path'] = output_path
@@ -184,7 +184,6 @@ for data_set in arguments['--data-set']:
   roi_size = arguments['--roi-size']
 
   preview_video_path = data_set_path / 'tracks.mp4'
-
   print("Building tracks with gap size {:d} and roi size {:f}...".format(gap_size, roi_size))
   tracks = make_tracks(normalized_path, masks_path, tracks_path, cyto_tracks_path, delta_t=arguments['--gap-size'], default_roi_size=arguments['--roi-size'])
   
@@ -193,7 +192,6 @@ for data_set in arguments['--data-set']:
   datas.append(d)
 
   hatchvid.make_video(stack[...,input_gen.get_segmentation_channel_idx()], tracks_path, data_set_path / 'video.mp4')
-
 data = pd.concat(datas)
 arguments['frame_width'] = stack.shape[2]
 arguments['frame_height'] = stack.shape[1]

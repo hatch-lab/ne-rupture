@@ -1,10 +1,11 @@
 .Rhistory
 *._*
 .DS_Store
-.venv/
+.env/
 .Python
 *.pyc
 *py.class
+validate/validation-data/output/
 validate/output/
 validate/validation-data/images
 notebooks/

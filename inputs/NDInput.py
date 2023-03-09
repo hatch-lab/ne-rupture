@@ -37,7 +37,7 @@ class NDInput:
         if key == '"DoTimelapse"' and value != "TRUE":
           self.meta['dims']['t'] = 1
         elif key == '"NTimePoints"':
-          self.meta['dims']['t'] = int(value)+1
+          self.meta['dims']['t'] = int(value)
 
         if key == '"DoWave"' and value != "TRUE":
           self.meta['dims']['c'] == 1
